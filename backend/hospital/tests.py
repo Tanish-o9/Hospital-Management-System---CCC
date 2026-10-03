@@ -161,3 +161,18 @@ class HospitalManagementTests(APITestCase):
         self.client.force_authenticate(user=self.admin_user)
         res_adm = self.client.get(reverse('dashboard-admin'))
         self.assertEqual(res_adm.status_code, status.HTTP_200_OK)
+
+    def test_send_and_verify_otp(self):
+        send_url = reverse('auth-send-otp')
+        data = {'email': 'otp_test@example.com'}
+        response = self.client.post(send_url, data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('otp', response.data)
+        
+        otp_code = response.data['otp']
+
+        verify_url = reverse('auth-verify-otp')
+        verify_data = {'email': 'otp_test@example.com', 'otp': otp_code}
+        verify_response = self.client.post(verify_url, verify_data)
+        self.assertEqual(verify_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(verify_response.data['is_verified'])

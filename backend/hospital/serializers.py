@@ -12,6 +12,15 @@ from .models import (
 User = get_user_model()
 
 
+class SendOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class VerifyOTPSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(max_length=6, min_length=6)
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

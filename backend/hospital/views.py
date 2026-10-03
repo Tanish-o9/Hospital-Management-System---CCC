@@ -5,7 +5,12 @@ from rest_framework import status, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+import random
+from django.core.mail import send_mail
+from django.conf import settings
+
 from .models import (
+    OTPVerification,
     User,
     DoctorProfile,
     PatientProfile,
@@ -16,6 +21,8 @@ from .models import (
 )
 
 from .serializers import (
+    SendOTPSerializer,
+    VerifyOTPSerializer,
     UserSerializer,
     RegisterSerializer,
     DoctorProfileSerializer,
@@ -30,8 +37,72 @@ from .permissions import IsDoctor, IsPatient, IsAdmin
 
 
 # ==================================================
-# 1. AUTHENTICATION VIEWS
+# 1. AUTHENTICATION & OTP VIEWS
 # ==================================================
+
+class SendOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = SendOTPSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            otp_code = f"{random.randint(100000, 999999)}"
+            
+            OTPVerification.objects.update_or_create(
+                email=email,
+                defaults={
+                    'otp_code': otp_code,
+                    'is_verified': False,
+                    'created_at': timezone.now()
+                }
+            )
+
+            subject = "Your Hospital System OTP Code"
+            message = f"Hello,\n\nYour 6-digit OTP verification code is: {otp_code}\nThis OTP is valid for 10 minutes.\n\nThank you!"
+            from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hospital.com')
+            
+            try:
+                send_mail(subject, message, from_email, [email], fail_silently=True)
+            except Exception:
+                pass
+
+            return Response(
+                {
+                    "message": "OTP sent successfully to email.",
+                    "email": email,
+                    "otp": otp_code
+                },
+                status=status.HTTP_200_OK
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class VerifyOTPView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            otp = serializer.validated_data['otp']
+
+            try:
+                record = OTPVerification.objects.get(email=email)
+            except OTPVerification.DoesNotExist:
+                return Response({"error": "No OTP request found for this email."}, status=status.HTTP_404_NOT_FOUND)
+
+            if record.is_expired():
+                return Response({"error": "OTP has expired. Please request a new OTP."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if record.otp_code != otp:
+                return Response({"error": "Invalid OTP code."}, status=status.HTTP_400_BAD_REQUEST)
+
+            record.is_verified = True
+            record.save()
+
+            return Response({"message": "OTP verified successfully.", "email": email, "is_verified": True}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
@@ -631,3 +702,25 @@ class AdminDashboardView(APIView):
             "pending_bills": pending_bills
         }
         return Response(data, status=status.HTTP_200_OK)
+
+
+class RootApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({
+            "message": "Hospital Management System API is running successfully!",
+            "status": "online",
+            "endpoints": {
+                "auth_register": "/api/auth/register/",
+                "auth_login": "/api/auth/login/",
+                "doctors": "/api/doctors/",
+                "patients": "/api/patients/",
+                "appointments": "/api/appointments/",
+                "medical_records": "/api/medical-records/",
+                "prescriptions": "/api/prescriptions/",
+                "bills": "/api/bills/",
+                "admin": "/admin/"
+            }
+        }, status=status.HTTP_200_OK)
+
