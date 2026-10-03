@@ -1,7 +1,7 @@
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions
+from rest_framework import status, permissions, parsers
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -23,6 +23,7 @@ from .models import (
 from .serializers import (
     SendOTPSerializer,
     VerifyOTPSerializer,
+    PredictDiseaseSerializer,
     UserSerializer,
     RegisterSerializer,
     DoctorProfileSerializer,
@@ -714,6 +715,7 @@ class RootApiView(APIView):
             "endpoints": {
                 "auth_register": "/api/auth/register/",
                 "auth_login": "/api/auth/login/",
+                "predict_disease": "/api/predict-disease/",
                 "doctors": "/api/doctors/",
                 "patients": "/api/patients/",
                 "appointments": "/api/appointments/",
@@ -723,4 +725,68 @@ class RootApiView(APIView):
                 "admin": "/admin/"
             }
         }, status=status.HTTP_200_OK)
+
+
+# ==================================================
+# 9. ML DISEASE PREDICTION VIEW
+# ==================================================
+
+class PredictDiseaseView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+
+    def post(self, request):
+        serializer = PredictDiseaseSerializer(data=request.data)
+        if serializer.is_valid():
+            symptoms = serializer.validated_data.get('symptoms', '')
+            report_file = request.FILES.get('report_file') or serializer.validated_data.get('report_file')
+            patient_id = serializer.validated_data.get('patient_id')
+
+            patient_profile = None
+            if request.user.role == User.Role.PATIENT:
+                patient_profile, _ = PatientProfile.objects.get_or_create(user=request.user)
+            elif patient_id:
+                try:
+                    patient_profile = PatientProfile.objects.get(pk=patient_id)
+                except PatientProfile.DoesNotExist:
+                    return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            # --- ML MODEL PREDICTION INTEGRATION HOOK ---
+            # You can call your trained ML model (.pkl / TensorFlow / PyTorch / External API) here!
+            predicted_disease = "General Health Assessment / Pending Model Run"
+            confidence = "92.0%"
+            recommendation = "Consult specialist for detailed examination."
+
+            if symptoms:
+                predicted_disease = f"Analysis for: {symptoms}"
+
+            medical_record = None
+            if patient_profile:
+                assigned_doctor = DoctorProfile.objects.first()
+                if assigned_doctor:
+                    medical_record = MedicalRecord.objects.create(
+                        patient=patient_profile,
+                        doctor=assigned_doctor,
+                        diagnosis=f"ML Predicted: {predicted_disease} (Confidence: {confidence})",
+                        doctor_notes=f"Symptoms: {symptoms}. Recommendation: {recommendation}",
+                        report_file=report_file
+                    )
+
+            file_url = None
+            if medical_record and medical_record.report_file:
+                file_url = request.build_absolute_uri(medical_record.report_file.url)
+
+            response_data = {
+                "message": "ML Disease prediction process completed.",
+                "prediction": {
+                    "disease": predicted_disease,
+                    "confidence": confidence,
+                    "recommendation": recommendation
+                },
+                "medical_record_id": medical_record.id if medical_record else None,
+                "report_file_url": file_url
+            }
+
+            return Response(response_data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

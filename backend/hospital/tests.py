@@ -176,3 +176,12 @@ class HospitalManagementTests(APITestCase):
         verify_response = self.client.post(verify_url, verify_data)
         self.assertEqual(verify_response.status_code, status.HTTP_200_OK)
         self.assertTrue(verify_response.data['is_verified'])
+
+    def test_predict_disease_endpoint(self):
+        self.client.force_authenticate(user=self.patient_user)
+        url = reverse('predict-disease')
+        data = {'symptoms': 'Fever, cough, chest pain'}
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('prediction', response.data)
+        self.assertIn('medical_record_id', response.data)

@@ -226,9 +226,16 @@ class MedicalRecordSerializer(serializers.ModelSerializer):
             'appointment_id',
             'diagnosis',
             'doctor_notes',
+            'report_file',
             'created_at'
         )
         read_only_fields = ('id', 'patient', 'doctor', 'created_at')
+
+
+class PredictDiseaseSerializer(serializers.Serializer):
+    patient_id = serializers.IntegerField(required=False, allow_null=True)
+    symptoms = serializers.CharField(required=False, allow_blank=True)
+    report_file = serializers.FileField(required=False, allow_null=True)
 
 
 class PrescriptionSerializer(serializers.ModelSerializer):
