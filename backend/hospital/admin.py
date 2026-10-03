@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import (
+    OTPVerification,
     User,
     DoctorProfile,
     PatientProfile,
@@ -9,6 +10,13 @@ from .models import (
     Prescription,
     Bill
 )
+
+
+@admin.register(OTPVerification)
+class OTPVerificationAdmin(admin.ModelAdmin):
+    list_display = ('email', 'otp_code', 'is_verified', 'created_at')
+    search_fields = ('email', 'otp_code')
+    list_filter = ('is_verified', 'created_at')
 
 
 @admin.register(User)

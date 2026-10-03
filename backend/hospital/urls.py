@@ -3,6 +3,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     RootApiView,
+    SendOTPView,
+    VerifyOTPView,
     RegisterView,
     CustomTokenObtainPairView,
     MeView,
@@ -29,7 +31,9 @@ urlpatterns = [
     # Root Welcome Endpoint
     path('', RootApiView.as_view(), name='root-api'),
 
-    # 1. Authentication
+    # 1. Authentication & OTP
+    path('api/auth/send-otp/', SendOTPView.as_view(), name='auth-send-otp'),
+    path('api/auth/verify-otp/', VerifyOTPView.as_view(), name='auth-verify-otp'),
     path('api/auth/register/', RegisterView.as_view(), name='auth-register'),
     path('api/auth/login/', CustomTokenObtainPairView.as_view(), name='auth-login'),
     path('api/auth/refresh/', TokenRefreshView.as_view(), name='auth-refresh'),

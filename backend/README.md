@@ -110,7 +110,9 @@ The server will run at: `http://127.0.0.1:8000/`
 
 ## 📡 API Endpoints List
 
-### 1. Authentication
+### 1. Authentication & Free Email OTP
+- `POST /api/auth/send-otp/` - Send 6-digit OTP to user's email (`{ "email": "user@example.com" }`)
+- `POST /api/auth/verify-otp/` - Verify OTP (`{ "email": "user@example.com", "otp": "123456" }`)
 - `POST /api/auth/register/` - Register Doctor or Patient (`role`: `DOCTOR` | `PATIENT`, optional patient field: `date_of_birth`/`dob`, optional doctor fields: `specialization`, `qualification`, `experience`, `consultation_fee`, `phone`, `available_days`)
 - `POST /api/auth/login/` - Login & receive JWT access + refresh tokens
 - `POST /api/auth/refresh/` - Refresh JWT access token
