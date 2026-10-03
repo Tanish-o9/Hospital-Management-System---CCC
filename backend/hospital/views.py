@@ -631,3 +631,25 @@ class AdminDashboardView(APIView):
             "pending_bills": pending_bills
         }
         return Response(data, status=status.HTTP_200_OK)
+
+
+class RootApiView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({
+            "message": "Hospital Management System API is running successfully!",
+            "status": "online",
+            "endpoints": {
+                "auth_register": "/api/auth/register/",
+                "auth_login": "/api/auth/login/",
+                "doctors": "/api/doctors/",
+                "patients": "/api/patients/",
+                "appointments": "/api/appointments/",
+                "medical_records": "/api/medical-records/",
+                "prescriptions": "/api/prescriptions/",
+                "bills": "/api/bills/",
+                "admin": "/admin/"
+            }
+        }, status=status.HTTP_200_OK)
+
