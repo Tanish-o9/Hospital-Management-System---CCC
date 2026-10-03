@@ -1,0 +1,633 @@
+from django.utils import timezone
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status, permissions
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from .models import (
+    User,
+    DoctorProfile,
+    PatientProfile,
+    Appointment,
+    MedicalRecord,
+    Prescription,
+    Bill
+)
+
+from .serializers import (
+    UserSerializer,
+    RegisterSerializer,
+    DoctorProfileSerializer,
+    PatientProfileSerializer,
+    AppointmentSerializer,
+    MedicalRecordSerializer,
+    PrescriptionSerializer,
+    BillSerializer
+)
+
+from .permissions import IsDoctor, IsPatient, IsAdmin
+
+
+# ==================================================
+# 1. AUTHENTICATION VIEWS
+# ==================================================
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data['user'] = UserSerializer(self.user).data
+        return data
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+
+class RegisterView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            
+            user_data = UserSerializer(user).data
+            if hasattr(user, 'patient_profile') and user.patient_profile:
+                user_data['patient_profile'] = PatientProfileSerializer(user.patient_profile).data
+            elif hasattr(user, 'doctor_profile') and user.doctor_profile:
+                user_data['doctor_profile'] = DoctorProfileSerializer(user.doctor_profile).data
+
+            return Response(
+                {
+                    "message": "User registered successfully.",
+                    "user": user_data
+                },
+                status=status.HTTP_201_CREATED
+            )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        serializer = UserSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# ==================================================
+# 2. DOCTOR MANAGEMENT VIEWS
+# ==================================================
+
+class DoctorListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        doctors = DoctorProfile.objects.select_related('user').all()
+        serializer = DoctorProfileSerializer(doctors, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class DoctorDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            doctor = DoctorProfile.objects.select_related('user').get(pk=pk)
+        except DoctorProfile.DoesNotExist:
+            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = DoctorProfileSerializer(doctor)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class DoctorMyProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+
+    def get(self, request):
+        try:
+            profile = request.user.doctor_profile
+        except DoctorProfile.DoesNotExist:
+            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = DoctorProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if hasattr(request.user, 'doctor_profile'):
+            return Response({"error": "Doctor profile already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = DoctorProfileSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        try:
+            profile = request.user.doctor_profile
+        except DoctorProfile.DoesNotExist:
+            profile = DoctorProfile.objects.create(user=request.user)
+        
+        serializer = DoctorProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================================================
+# 3. PATIENT MANAGEMENT VIEWS
+# ==================================================
+
+class PatientListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role in [User.Role.ADMIN, User.Role.DOCTOR] or request.user.is_superuser:
+            patients = PatientProfile.objects.select_related('user').all()
+            serializer = PatientProfileSerializer(patients, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+
+class PatientDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            patient = PatientProfile.objects.select_related('user').get(pk=pk)
+        except PatientProfile.DoesNotExist:
+            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        if request.user.role in [User.Role.ADMIN, User.Role.DOCTOR] or request.user.is_superuser or patient.user == request.user:
+            serializer = PatientProfileSerializer(patient)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+
+class PatientMyProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPatient]
+
+    def get(self, request):
+        try:
+            profile = request.user.patient_profile
+        except PatientProfile.DoesNotExist:
+            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = PatientProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        if hasattr(request.user, 'patient_profile'):
+            return Response({"error": "Patient profile already exists."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = PatientProfileSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request):
+        try:
+            profile = request.user.patient_profile
+        except PatientProfile.DoesNotExist:
+            profile = PatientProfile.objects.create(user=request.user)
+        
+        serializer = PatientProfileSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================================================
+# 4. APPOINTMENT VIEWS
+# ==================================================
+
+class AppointmentListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = Appointment.objects.select_related('patient__user', 'doctor__user').all()
+
+        if user.role == User.Role.PATIENT:
+            queryset = queryset.filter(patient__user=user)
+        elif user.role == User.Role.DOCTOR:
+            queryset = queryset.filter(doctor__user=user)
+        elif not (user.role == User.Role.ADMIN or user.is_superuser):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        status_param = request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param.upper())
+
+        upcoming = request.query_params.get('upcoming')
+        if upcoming and upcoming.lower() in ['true', '1']:
+            queryset = queryset.filter(
+                appointment_date__gte=timezone.now().date(),
+                status=Appointment.Status.BOOKED
+            )
+
+        serializer = AppointmentSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        if user.role == User.Role.PATIENT:
+            patient_profile, _ = PatientProfile.objects.get_or_create(user=user)
+        elif user.role in [User.Role.ADMIN, User.Role.DOCTOR] or user.is_superuser:
+            patient_id = request.data.get('patient_id')
+            if not patient_id:
+                return Response({"error": "patient_id is required for non-patient booking."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                patient_profile = PatientProfile.objects.get(pk=patient_id)
+            except PatientProfile.DoesNotExist:
+                return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = AppointmentSerializer(data=request.data)
+        if serializer.is_valid():
+            appointment = serializer.save(patient=patient_profile)
+            
+            # Auto-generate bill
+            fee = appointment.doctor.consultation_fee
+            Bill.objects.create(
+                patient=appointment.patient,
+                doctor=appointment.doctor,
+                appointment=appointment,
+                consultation_fee=fee,
+                amount=fee,
+                status=Bill.Status.PENDING
+            )
+
+            return Response(AppointmentSerializer(appointment).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AppointmentDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, pk, user):
+        try:
+            appointment = Appointment.objects.select_related('patient__user', 'doctor__user').get(pk=pk)
+            if user.role == User.Role.PATIENT and appointment.patient.user != user:
+                return None
+            if user.role == User.Role.DOCTOR and appointment.doctor.user != user:
+                return None
+            return appointment
+        except Appointment.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        appointment = self.get_object(pk, request.user)
+        if not appointment:
+            return Response({"error": "Appointment not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = AppointmentSerializer(appointment)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk):
+        appointment = self.get_object(pk, request.user)
+        if not appointment:
+            return Response({"error": "Appointment not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = AppointmentSerializer(appointment, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        appointment = self.get_object(pk, request.user)
+        if not appointment:
+            return Response({"error": "Appointment not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        appointment.delete()
+        return Response({"message": "Appointment deleted successfully."}, status=status.HTTP_200_OK)
+
+
+# ==================================================
+# 5. MEDICAL RECORD VIEWS
+# ==================================================
+
+class MedicalRecordListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = MedicalRecord.objects.select_related('patient__user', 'doctor__user', 'appointment').all()
+
+        if user.role == User.Role.PATIENT:
+            queryset = queryset.filter(patient__user=user)
+        elif user.role == User.Role.DOCTOR:
+            queryset = queryset.filter(doctor__user=user)
+        elif not (user.role == User.Role.ADMIN or user.is_superuser):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = MedicalRecordSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        if not (user.role == User.Role.DOCTOR or user.role == User.Role.ADMIN or user.is_superuser):
+            return Response({"error": "Only doctors can create medical records."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            doctor_profile = user.doctor_profile
+        except DoctorProfile.DoesNotExist:
+            if user.role == User.Role.ADMIN or user.is_superuser:
+                doctor_id = request.data.get('doctor_id')
+                if doctor_id:
+                    doctor_profile = DoctorProfile.objects.get(pk=doctor_id)
+                else:
+                    return Response({"error": "doctor_id is required when Admin creates record."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"error": "Doctor profile required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = MedicalRecordSerializer(data=request.data)
+        if serializer.is_valid():
+            record = serializer.save(doctor=doctor_profile)
+            return Response(MedicalRecordSerializer(record).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MedicalRecordDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, pk, user):
+        try:
+            record = MedicalRecord.objects.select_related('patient__user', 'doctor__user').get(pk=pk)
+            if user.role == User.Role.PATIENT and record.patient.user != user:
+                return None
+            if user.role == User.Role.DOCTOR and record.doctor.user != user:
+                return None
+            return record
+        except MedicalRecord.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        record = self.get_object(pk, request.user)
+        if not record:
+            return Response({"error": "Medical record not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = MedicalRecordSerializer(record)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk):
+        if request.user.role not in [User.Role.DOCTOR, User.Role.ADMIN] and not request.user.is_superuser:
+            return Response({"error": "Patients cannot update medical records."}, status=status.HTTP_403_FORBIDDEN)
+        
+        record = self.get_object(pk, request.user)
+        if not record:
+            return Response({"error": "Medical record not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = MedicalRecordSerializer(record, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================================================
+# 6. PRESCRIPTION VIEWS
+# ==================================================
+
+class PrescriptionListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = Prescription.objects.select_related('patient__user', 'doctor__user', 'appointment').all()
+
+        if user.role == User.Role.PATIENT:
+            queryset = queryset.filter(patient__user=user)
+        elif user.role == User.Role.DOCTOR:
+            queryset = queryset.filter(doctor__user=user)
+        elif not (user.role == User.Role.ADMIN or user.is_superuser):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = PrescriptionSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        if not (user.role == User.Role.DOCTOR or user.role == User.Role.ADMIN or user.is_superuser):
+            return Response({"error": "Only doctors can create prescriptions."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            doctor_profile = user.doctor_profile
+        except DoctorProfile.DoesNotExist:
+            if user.role == User.Role.ADMIN or user.is_superuser:
+                doctor_id = request.data.get('doctor_id')
+                if doctor_id:
+                    doctor_profile = DoctorProfile.objects.get(pk=doctor_id)
+                else:
+                    return Response({"error": "doctor_id is required when Admin creates prescription."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"error": "Doctor profile required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = PrescriptionSerializer(data=request.data)
+        if serializer.is_valid():
+            prescription = serializer.save(doctor=doctor_profile)
+            return Response(PrescriptionSerializer(prescription).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PrescriptionDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, pk, user):
+        try:
+            prescription = Prescription.objects.select_related('patient__user', 'doctor__user').get(pk=pk)
+            if user.role == User.Role.PATIENT and prescription.patient.user != user:
+                return None
+            if user.role == User.Role.DOCTOR and prescription.doctor.user != user:
+                return None
+            return prescription
+        except Prescription.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        prescription = self.get_object(pk, request.user)
+        if not prescription:
+            return Response({"error": "Prescription not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PrescriptionSerializer(prescription)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk):
+        if request.user.role not in [User.Role.DOCTOR, User.Role.ADMIN] and not request.user.is_superuser:
+            return Response({"error": "Patients cannot update prescriptions."}, status=status.HTTP_403_FORBIDDEN)
+
+        prescription = self.get_object(pk, request.user)
+        if not prescription:
+            return Response({"error": "Prescription not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PrescriptionSerializer(prescription, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================================================
+# 7. BILLING VIEWS
+# ==================================================
+
+class BillListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = Bill.objects.select_related('patient__user', 'doctor__user', 'appointment').all()
+
+        if user.role == User.Role.PATIENT:
+            queryset = queryset.filter(patient__user=user)
+        elif user.role == User.Role.DOCTOR:
+            queryset = queryset.filter(doctor__user=user)
+        elif not (user.role == User.Role.ADMIN or user.is_superuser):
+            return Response({"error": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = BillSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        user = request.user
+        if not (user.role in [User.Role.ADMIN, User.Role.DOCTOR] or user.is_superuser):
+            return Response({"error": "Only Admins or Doctors can manually generate bills."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = BillSerializer(data=request.data)
+        if serializer.is_valid():
+            doctor = serializer.validated_data.get('doctor')
+            consultation_fee = serializer.validated_data.get('consultation_fee') or doctor.consultation_fee
+            amount = serializer.validated_data.get('amount') or consultation_fee
+
+            bill = serializer.save(consultation_fee=consultation_fee, amount=amount)
+            return Response(BillSerializer(bill).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BillDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self, pk, user):
+        try:
+            bill = Bill.objects.select_related('patient__user', 'doctor__user').get(pk=pk)
+            if user.role == User.Role.PATIENT and bill.patient.user != user:
+                return None
+            if user.role == User.Role.DOCTOR and bill.doctor.user != user:
+                return None
+            return bill
+        except Bill.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        bill = self.get_object(pk, request.user)
+        if not bill:
+            return Response({"error": "Bill not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = BillSerializer(bill)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, pk):
+        bill = self.get_object(pk, request.user)
+        if not bill:
+            return Response({"error": "Bill not found or permission denied."}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = BillSerializer(bill, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ==================================================
+# 8. DASHBOARD VIEWS
+# ==================================================
+
+class DoctorDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsDoctor]
+
+    def get(self, request):
+        try:
+            doctor_profile = request.user.doctor_profile
+        except DoctorProfile.DoesNotExist:
+            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        appointments_qs = Appointment.objects.filter(doctor=doctor_profile)
+        
+        total_appointments = appointments_qs.count()
+        upcoming_appointments = appointments_qs.filter(
+            appointment_date__gte=timezone.now().date(),
+            status=Appointment.Status.BOOKED
+        ).count()
+        completed_appointments = appointments_qs.filter(status=Appointment.Status.COMPLETED).count()
+        total_patients = appointments_qs.values('patient').distinct().count()
+        
+        recent_appointments = appointments_qs.select_related('patient__user', 'doctor__user')[:5]
+
+        data = {
+            "total_appointments": total_appointments,
+            "upcoming_appointments": upcoming_appointments,
+            "completed_appointments": completed_appointments,
+            "total_patients": total_patients,
+            "recent_appointments": AppointmentSerializer(recent_appointments, many=True).data
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class PatientDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsPatient]
+
+    def get(self, request):
+        try:
+            patient_profile = request.user.patient_profile
+        except PatientProfile.DoesNotExist:
+            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        appointments_qs = Appointment.objects.filter(patient=patient_profile)
+        prescriptions_qs = Prescription.objects.filter(patient=patient_profile)
+        bills_qs = Bill.objects.filter(patient=patient_profile)
+
+        upcoming_appointments = appointments_qs.filter(
+            appointment_date__gte=timezone.now().date(),
+            status=Appointment.Status.BOOKED
+        ).count()
+        appointment_history_count = appointments_qs.count()
+        recent_prescriptions = prescriptions_qs.select_related('doctor__user', 'patient__user')[:5]
+        pending_bills = bills_qs.filter(status=Bill.Status.PENDING).count()
+        total_bills = bills_qs.count()
+
+        data = {
+            "upcoming_appointments": upcoming_appointments,
+            "appointment_history_count": appointment_history_count,
+            "recent_prescriptions": PrescriptionSerializer(recent_prescriptions, many=True).data,
+            "pending_bills": pending_bills,
+            "total_bills": total_bills
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class AdminDashboardView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+
+    def get(self, request):
+        total_doctors = DoctorProfile.objects.count()
+        total_patients = PatientProfile.objects.count()
+        
+        total_appointments = Appointment.objects.count()
+        completed_appointments = Appointment.objects.filter(status=Appointment.Status.COMPLETED).count()
+        pending_appointments = Appointment.objects.filter(status=Appointment.Status.BOOKED).count()
+
+        total_bills = Bill.objects.count()
+        pending_bills = Bill.objects.filter(status=Bill.Status.PENDING).count()
+
+        data = {
+            "total_doctors": total_doctors,
+            "total_patients": total_patients,
+            "total_appointments": total_appointments,
+            "completed_appointments": completed_appointments,
+            "pending_appointments": pending_appointments,
+            "total_bills": total_bills,
+            "pending_bills": pending_bills
+        }
+        return Response(data, status=status.HTTP_200_OK)
