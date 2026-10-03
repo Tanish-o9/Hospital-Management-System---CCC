@@ -131,6 +131,7 @@ class MedicalRecord(models.Model):
     )
     diagnosis = models.TextField()
     doctor_notes = models.TextField(blank=True)
+    report_file = models.FileField(upload_to='medical_reports/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

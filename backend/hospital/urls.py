@@ -5,6 +5,7 @@ from .views import (
     RootApiView,
     SendOTPView,
     VerifyOTPView,
+    PredictDiseaseView,
     RegisterView,
     CustomTokenObtainPairView,
     MeView,
@@ -30,6 +31,9 @@ from .views import (
 urlpatterns = [
     # Root Welcome Endpoint
     path('', RootApiView.as_view(), name='root-api'),
+
+    # ML Disease Prediction
+    path('api/predict-disease/', PredictDiseaseView.as_view(), name='predict-disease'),
 
     # 1. Authentication & OTP
     path('api/auth/send-otp/', SendOTPView.as_view(), name='auth-send-otp'),
