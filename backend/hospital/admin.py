@@ -1,0 +1,61 @@
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+from .models import (
+    User,
+    DoctorProfile,
+    PatientProfile,
+    Appointment,
+    MedicalRecord,
+    Prescription,
+    Bill
+)
+
+
+@admin.register(User)
+class CustomUserAdmin(UserAdmin):
+    list_display = ('username', 'email', 'first_name', 'last_name', 'role', 'is_staff')
+    list_filter = ('role', 'is_staff', 'is_superuser')
+    fieldsets = UserAdmin.fieldsets + (
+        ('Custom Fields', {'fields': ('role',)}),
+    )
+    add_fieldsets = UserAdmin.add_fieldsets + (
+        ('Custom Fields', {'fields': ('role',)}),
+    )
+
+
+@admin.register(DoctorProfile)
+class DoctorProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'specialization', 'phone', 'experience', 'consultation_fee')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'specialization')
+
+
+@admin.register(PatientProfile)
+class PatientProfileAdmin(admin.ModelAdmin):
+    list_display = ('user', 'date_of_birth', 'gender', 'phone', 'blood_group')
+    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'phone')
+
+
+@admin.register(Appointment)
+class AppointmentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'patient', 'doctor', 'appointment_date', 'appointment_time', 'status')
+    list_filter = ('status', 'appointment_date')
+    search_fields = ('patient__user__username', 'doctor__user__username', 'reason')
+
+
+@admin.register(MedicalRecord)
+class MedicalRecordAdmin(admin.ModelAdmin):
+    list_display = ('id', 'patient', 'doctor', 'appointment', 'created_at')
+    search_fields = ('patient__user__username', 'doctor__user__username', 'diagnosis')
+
+
+@admin.register(Prescription)
+class PrescriptionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'patient', 'doctor', 'medicine_name', 'dosage', 'duration', 'created_at')
+    search_fields = ('patient__user__username', 'doctor__user__username', 'medicine_name')
+
+
+@admin.register(Bill)
+class BillAdmin(admin.ModelAdmin):
+    list_display = ('id', 'patient', 'doctor', 'consultation_fee', 'amount', 'status', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('patient__user__username', 'doctor__user__username')
