@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
-from .models import DoctorProfile, PatientProfile, Appointment, Bill, MedicalRecord, Prescription
+from .models import OTPVerification, DoctorProfile, PatientProfile, Appointment, Bill, MedicalRecord, Prescription
 
 User = get_user_model()
 
