@@ -823,101 +823,7 @@ class PredictDiseaseView(APIView):
 
     def post(self, request):
         serializer = PredictDiseaseSerializer(data=request.data)
-
-        if not serializer.is_valid():
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        symptoms = serializer.validated_data.get('symptoms', '')
-        report_file = request.FILES.get('report_file')
-        patient_id = serializer.validated_data.get('patient_id')
-
-        # Find patient profile
-        patient_profile = None
-
-        if request.user.role == User.Role.PATIENT:
-            patient_profile, _ = PatientProfile.objects.get_or_create(
-                user=request.user
-            )
-
-        elif patient_id:
-            try:
-                patient_profile = PatientProfile.objects.get(
-                    pk=patient_id
-                )
-            except PatientProfile.DoesNotExist:
-                return Response(
-                    {"error": "Patient profile not found."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-        # ==================================================
-        # CALL FASTAPI ML SERVICE
-        # ==================================================
-
-        ml_api_url = getattr(
-            settings,
-            'ML_API_URL',
-            'http://ml:8001'
-        )
-
-        predicted_disease = "Unable to determine"
-        confidence = "0%"
-        recommendation = (
-            "Please consult a doctor for further evaluation."
-        )
-
-        try:
-            if not report_file:
-                return Response(
-                    {
-                        "error": (
-                            "A medical report file is required "
-                            "for ML prediction."
-                        ),
-                        "message": (
-                            "Upload a PDF or image medical report."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            report_file.seek(0)
-
-            files = {
-                'file': (
-                    report_file.name,
-                    report_file.read(),
-                    getattr(
-                        report_file,
-                        'content_type',
-                        'application/octet-stream'
-                    )
-                )
-            }
-
-            ml_response = requests.post(
-                f"{ml_api_url}/predict-report",
-                files=files,
-                timeout=120
-            )
-
-            ml_response.raise_for_status()
-
-            ml_result = ml_response.json()
-
-            results = ml_result.get("results", [])
-
-            if results:
-                highest_risk = max(
-                    results,
-                    key=lambda item: item.get(
-                        "risk_percent",
-                        0
-                    )
-                )
+            
 
                 predicted_disease = highest_risk.get(
                     "disease",
@@ -953,11 +859,7 @@ class PredictDiseaseView(APIView):
                     "symptoms persist."
                 )
 
-        except requests.exceptions.RequestException as exc:
-            return Response(
-                {
-                    "error": "ML service is currently unavailable.",
-                    "details": str(exc)
+
                 },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
@@ -1021,7 +923,4 @@ class PredictDiseaseView(APIView):
             "report_file_url": file_url
         }
 
-        return Response(
-            response_data,
-            status=status.HTTP_200_OK
-        )
+
