@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: hospital_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hospital_db
+      POSTGRES_USER: hospital_user
+      POSTGRES_PASSWORD: "ey1TVH2WoVdsWlvi2Vlkysm9chBg4UGs"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hospital_user -d hospital_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hospital_web
+    restart: unless-stopped
+    command: >
+      sh -c "
+      python manage.py migrate &&
+      python manage.py collectstatic --noinput &&
+      gunicorn --bind 0.0.0.0:8000 config.wsgi:application
+      "
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: "postgres://hospital_user:ey1TVH2WoVdsWlvi2Vlkysm9chBg4UGs@db:5432/hospital_db"
+    ports:
+      - "8080:8000"
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  media_data:
+  static_data:
+
