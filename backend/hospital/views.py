@@ -203,11 +203,7 @@ class DoctorMyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def get(self, request):
-        try:
-            profile = request.user.doctor_profile
-        except DoctorProfile.DoesNotExist:
-            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+        profile, _ = DoctorProfile.objects.get_or_create(user=request.user)
         serializer = DoctorProfileSerializer(profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -283,11 +279,7 @@ class PatientMyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
     def get(self, request):
-        try:
-            profile = request.user.patient_profile
-        except PatientProfile.DoesNotExist:
-            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+        profile, _ = PatientProfile.objects.get_or_create(user=request.user)
         serializer = PatientProfileSerializer(profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -675,10 +667,7 @@ class DoctorDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def get(self, request):
-        try:
-            doctor_profile = request.user.doctor_profile
-        except DoctorProfile.DoesNotExist:
-            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        doctor_profile, _ = DoctorProfile.objects.get_or_create(user=request.user)
 
         appointments_qs = Appointment.objects.filter(doctor=doctor_profile)
         
@@ -706,10 +695,7 @@ class PatientDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
     def get(self, request):
-        try:
-            patient_profile = request.user.patient_profile
-        except PatientProfile.DoesNotExist:
-            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        patient_profile, _ = PatientProfile.objects.get_or_create(user=request.user)
 
         appointments_qs = Appointment.objects.filter(patient=patient_profile)
         prescriptions_qs = Prescription.objects.filter(patient=patient_profile)
