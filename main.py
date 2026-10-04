@@ -5,7 +5,7 @@ import io
 import re
 import joblib
 import numpy as np
-import pytesseract
+import pytesseract 
 
 from PIL import Image
 from pdf2image import convert_from_bytes
@@ -13,8 +13,7 @@ from pdf2image import convert_from_bytes
 
 app = FastAPI(title="Hospital Disease Risk API")
 
-MODEL_DIR = "/content/hospital_api/final_models"
-
+MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),"final_models")
 
 DISEASE_NAMES = {
     "DIQ010": "Diabetes",
