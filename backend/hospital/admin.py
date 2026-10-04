@@ -19,8 +19,25 @@ class OTPVerificationAdmin(admin.ModelAdmin):
     list_filter = ('is_verified', 'created_at')
 
 
+class DoctorProfileInline(admin.StackedInline):
+    model = DoctorProfile
+    can_delete = False
+    verbose_name_plural = 'Doctor Profile'
+    fk_name = 'user'
+    extra = 0
+
+
+class PatientProfileInline(admin.StackedInline):
+    model = PatientProfile
+    can_delete = False
+    verbose_name_plural = 'Patient Profile'
+    fk_name = 'user'
+    extra = 0
+
+
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
+    inlines = (DoctorProfileInline, PatientProfileInline)
     list_display = ('username', 'email', 'first_name', 'last_name', 'role', 'is_staff')
     list_filter = ('role', 'is_staff', 'is_superuser')
     fieldsets = UserAdmin.fieldsets + (
@@ -29,6 +46,7 @@ class CustomUserAdmin(UserAdmin):
     add_fieldsets = UserAdmin.add_fieldsets + (
         ('Custom Fields', {'fields': ('role',)}),
     )
+
 
 
 @admin.register(DoctorProfile)
