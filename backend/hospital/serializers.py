@@ -153,7 +153,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
     doctor_id = serializers.PrimaryKeyRelatedField(
         queryset=DoctorProfile.objects.all(),
         source='doctor',
-        write_only=True
+        write_only=True,
+        required=False
     )
     patient_id = serializers.PrimaryKeyRelatedField(
         queryset=PatientProfile.objects.all(),
@@ -180,6 +181,64 @@ class AppointmentSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ('id', 'patient', 'doctor', 'created_at')
 
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = data.copy()
+
+            # Flexible doctor resolution (DoctorProfile ID or Doctor User ID)
+            doc_val = data.get('doctor_id') or data.get('doctor')
+            if doc_val is not None:
+                try:
+                    doc_prof = DoctorProfile.objects.filter(pk=doc_val).first()
+                    if not doc_prof:
+                        doc_prof = DoctorProfile.objects.filter(user_id=doc_val).first()
+                        if not doc_prof:
+                            u = User.objects.filter(pk=doc_val, role=User.Role.DOCTOR).first()
+                            if u:
+                                doc_prof, _ = DoctorProfile.objects.get_or_create(user=u)
+                    if doc_prof:
+                        data['doctor_id'] = doc_prof.pk
+                except Exception:
+                    pass
+
+            # Flexible patient resolution (PatientProfile ID or Patient User ID)
+            pat_val = data.get('patient_id') or data.get('patient')
+            if pat_val is not None:
+                try:
+                    pat_prof = PatientProfile.objects.filter(pk=pat_val).first()
+                    if not pat_prof:
+                        pat_prof = PatientProfile.objects.filter(user_id=pat_val).first()
+                    if pat_prof:
+                        data['patient_id'] = pat_prof.pk
+                except Exception:
+                    pass
+
+            # Flexible time format parsing ("10:00 AM", "10:30", "10:30:00")
+            time_val = data.get('appointment_time') or data.get('time')
+            if time_val and isinstance(time_val, str):
+                from datetime import datetime
+                for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M%p"):
+                    try:
+                        parsed_t = datetime.strptime(time_val.strip(), fmt).time()
+                        data['appointment_time'] = parsed_t.strftime("%H:%M:%S")
+                        break
+                    except ValueError:
+                        pass
+
+            # Flexible date format parsing ("15-10-2026", "2026-10-15")
+            date_val = data.get('appointment_date') or data.get('date')
+            if date_val and isinstance(date_val, str):
+                from datetime import datetime
+                for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+                    try:
+                        parsed_d = datetime.strptime(date_val.strip(), fmt).date()
+                        data['appointment_date'] = parsed_d.strftime("%Y-%m-%d")
+                        break
+                    except ValueError:
+                        pass
+
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         doctor = attrs.get('doctor')
         appointment_date = attrs.get('appointment_date')
@@ -198,6 +257,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
             if qs.exists():
                 raise serializers.ValidationError("Doctor is already booked at this date and time.")
         return attrs
+
 
 
 class MedicalRecordSerializer(serializers.ModelSerializer):
