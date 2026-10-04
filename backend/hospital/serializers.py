@@ -30,6 +30,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
+    otp = serializers.CharField(required=False, allow_blank=True, write_only=True)
     # Patient fields
     date_of_birth = serializers.DateField(required=False, allow_null=True, write_only=True)
     dob = serializers.DateField(required=False, allow_null=True, write_only=True)
@@ -44,11 +45,12 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = (
-            'id', 'username', 'email', 'password', 'first_name', 'last_name', 'role',
+            'id', 'username', 'email', 'password', 'otp', 'first_name', 'last_name', 'role',
             'date_of_birth', 'dob',
             'specialization', 'phone', 'qualification', 'experience', 'consultation_fee', 'available_days'
         )
         read_only_fields = ('id',)
+
 
     def validate_role(self, value):
         if value not in [User.Role.DOCTOR, User.Role.PATIENT, User.Role.ADMIN]:

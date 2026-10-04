@@ -121,8 +121,33 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
+            email = serializer.validated_data.get('email')
+            provided_otp = request.data.get('otp') or serializer.validated_data.get('otp')
+
+            otp_record = OTPVerification.objects.filter(email=email).first()
+
+            if provided_otp:
+                if not otp_record or otp_record.otp_code != provided_otp:
+                    return Response({"error": "Invalid OTP code provided for registration."}, status=status.HTTP_400_BAD_REQUEST)
+                if otp_record.is_expired():
+                    return Response({"error": "OTP has expired. Please request a new OTP."}, status=status.HTTP_400_BAD_REQUEST)
+                otp_record.is_verified = True
+                otp_record.save()
+            else:
+                if not otp_record or not otp_record.is_verified:
+                    return Response(
+                        {"error": "Email is not verified via OTP. Please send and verify OTP before creating an account."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if otp_record.is_expired():
+                    return Response({"error": "OTP verification expired. Please request a new OTP."}, status=status.HTTP_400_BAD_REQUEST)
+
             user = serializer.save()
             
+            # Cleanup OTP verification record after successful account creation
+            if otp_record:
+                otp_record.delete()
+
             user_data = UserSerializer(user).data
             if hasattr(user, 'patient_profile') and user.patient_profile:
                 user_data['patient_profile'] = PatientProfileSerializer(user.patient_profile).data
@@ -137,6 +162,7 @@ class RegisterView(APIView):
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class MeView(APIView):

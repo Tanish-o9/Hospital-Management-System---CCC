@@ -48,6 +48,7 @@ class HospitalManagementTests(APITestCase):
         )
 
     def test_user_registration(self):
+        OTPVerification.objects.create(email='new_patient@test.com', otp_code='123456', is_verified=True)
         url = reverse('auth-register')
         data = {
             'username': 'new_patient',
@@ -62,7 +63,20 @@ class HospitalManagementTests(APITestCase):
         patient_profile = PatientProfile.objects.get(user__username='new_patient')
         self.assertEqual(str(patient_profile.date_of_birth), '1998-08-20')
 
+    def test_registration_fails_without_otp(self):
+        url = reverse('auth-register')
+        data = {
+            'username': 'unverified_patient',
+            'email': 'unverified@test.com',
+            'password': 'password123',
+            'role': 'PATIENT'
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Email is not verified via OTP', str(response.data))
+
     def test_user_registration_with_dob_alias(self):
+        OTPVerification.objects.create(email='new_patient_dob@test.com', otp_code='123456', is_verified=True)
         url = reverse('auth-register')
         data = {
             'username': 'new_patient_dob',
@@ -77,6 +91,7 @@ class HospitalManagementTests(APITestCase):
         self.assertEqual(str(patient_profile.date_of_birth), '2000-05-15')
 
     def test_doctor_registration_with_profile(self):
+        OTPVerification.objects.create(email='new_doc@test.com', otp_code='123456', is_verified=True)
         url = reverse('auth-register')
         data = {
             'username': 'new_doc',
@@ -95,6 +110,7 @@ class HospitalManagementTests(APITestCase):
         self.assertEqual(doc_profile.qualification, 'MD, DM')
         self.assertEqual(doc_profile.experience, 8)
         self.assertEqual(float(doc_profile.consultation_fee), 850.00)
+
 
     def test_login_and_jwt_token(self):
         url = reverse('auth-login')
