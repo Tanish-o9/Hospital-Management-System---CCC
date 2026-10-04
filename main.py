@@ -1,346 +1,517 @@
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
-import os
-import io
-import re
+from fastapi import FastAPI
+from pydantic import BaseModel
+import pandas as pd
 import joblib
-import numpy as np
-import pytesseract 
-
-from PIL import Image
-from pdf2image import convert_from_bytes
+import os
 
 
-app = FastAPI(title="Hospital Disease Risk API")
-
-MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),"final_models")
-
-DISEASE_NAMES = {
-    "DIQ010": "Diabetes",
-    "BPQ020": "High Blood Pressure",
-    "MCQ010": "Asthma",
-    "MCQ160A": "Arthritis",
-    "MCQ160B": "Congestive Heart Failure",
-    "MCQ160C": "Coronary Heart Disease",
-    "MCQ160D": "Angina",
-    "MCQ160E": "Heart Attack",
-    "MCQ160F": "Stroke",
-    "MCQ160G": "Emphysema",
-    "MCQ160K": "Chronic Bronchitis",
-    "MCQ160L": "Liver Condition",
-    "MCQ160M": "Thyroid Problem",
-    "MCQ160N": "Gout",
-    "MCQ160O": "COPD",
-    "MCQ220": "Malignant Tumor"
-}
+app = FastAPI(
+    title="Hospital Staff Scheduling API",
+    description="ML API for hospital staff scheduling and overload prediction",
+    version="1.0"
+)
 
 
-# Load trained models
-models = {}
 
-if not os.path.exists(MODEL_DIR):
-    raise FileNotFoundError(f"Model folder not found: {MODEL_DIR}")
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
-for file in os.listdir(MODEL_DIR):
-    if file.endswith(".joblib"):
-        path = os.path.join(MODEL_DIR, file)
-        models[file.replace(".joblib", "")] = joblib.load(path)
-
-
-def number(value):
-    if value is None:
-        return None
-
-    if isinstance(value, (int, float, np.number)):
-        return float(value)
-
-    match = re.search(r"-?\d+(?:\.\d+)?", str(value))
-
-    if match:
-        return float(match.group())
-
-    return None
+MODEL_DIR = os.path.join(
+    BASE_DIR,
+    "models"
+)
 
 
-def predict(patient_data):
-
-    results = []
-    skipped = {}
-
-    for disease, info in models.items():
-
-        features = info["features"]
-        model = info["model"]
-        threshold = float(info["threshold"])
-
-        missing = [
-            feature
-            for feature in features
-            if feature not in patient_data
-            or patient_data[feature] is None
-        ]
-
-        if missing:
-            skipped[disease] = missing
-            continue
-
-        values = [
-            number(patient_data[feature])
-            for feature in features
-        ]
-
-        if any(value is None for value in values):
-            skipped[disease] = features
-            continue
-
-        probability = float(
-            model.predict_proba([values])[0][1]
-        )
-
-        risk = round(probability * 100, 2)
-
-        if risk >= 70:
-            risk_level = "High"
-        elif risk >= 30:
-            risk_level = "Moderate"
-        else:
-            risk_level = "Low"
-
-        results.append({
-            "disease_code": disease,
-            "disease": DISEASE_NAMES.get(disease, disease),
-            "risk_percent": risk,
-            "risk_level": risk_level,
-            "predicted_class": int(
-                probability >= threshold
-            )
-        })
-
-    results.sort(
-        key=lambda x: x["risk_percent"],
-        reverse=True
+patient_model = joblib.load(
+    os.path.join(
+        MODEL_DIR,
+        "best_patient_model.joblib"
     )
+)
 
-    return {
-        "status": "success",
-
-        "results": results,
-
-        "written_result": [
-            {
-                "disease": item["disease"],
-                "risk_percent": item["risk_percent"],
-                "risk_level": item["risk_level"],
-                "message": (
-                    f"{item['disease']}: "
-                    f"{item['risk_percent']}% "
-                    f"({item['risk_level']})"
-                )
-            }
-            for item in results
-        ],
-
-        "graph_data": [
-            {
-                "disease": item["disease"],
-                "risk_percent": item["risk_percent"]
-            }
-            for item in results
-        ]
-    }
-
-
-# Manual patient data
-@app.post("/predict")
-def manual_predict(patient_data: dict):
-    return predict(patient_data)
-
-
-# OCR from PDF or image
-def get_ocr(file_bytes, content_type):
-
-    if content_type == "application/pdf":
-
-        pages = convert_from_bytes(
-            file_bytes,
-            dpi=200
-        )
-
-    else:
-
-        pages = [
-            Image.open(
-                io.BytesIO(file_bytes)
-            )
-        ]
-
-    text = "\n".join(
-        pytesseract.image_to_string(page)
-        for page in pages
+staff_model = joblib.load(
+    os.path.join(
+        MODEL_DIR,
+        "best_staff_model.joblib"
     )
+)
 
-    return text
-
-
-# OCR text -> NHANES feature mapping
-def extract_features(text):
-
-    text = text.lower()
-
-    patterns = {
-
-        "RIDAGEYR":
-            r"age\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "BMXBMI":
-            r"bmi\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "BMXHT":
-            r"height\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "BMXWT":
-            r"weight\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "BMXWAIST":
-            r"waist(?:\s+circumference)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "BPXSY1":
-            r"systolic(?:\s+blood\s+pressure)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "BPXDI1":
-            r"diastolic(?:\s+blood\s+pressure)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXGLU":
-            r"(?:blood\s+)?glucose\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXGH":
-            r"(?:hba1c|hb\s*a1c|a1c)\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXTC":
-            r"total\s+cholesterol\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBDHDD":
-            r"hdl(?:\s+cholesterol)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBDLDL":
-            r"ldl(?:\s+cholesterol)?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXTR":
-            r"triglycerides\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSCR":
-            r"creatinine\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSATSI":
-            r"\balt\b\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSASSI":
-            r"\bast\b\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSAL":
-            r"albumin\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSAPSI":
-            r"alkaline\s+phosphatase\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSTB":
-            r"bilirubin\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXSBU":
-            r"\bbun\b\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXHGB":
-            r"(?:hemoglobin|haemoglobin)\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXWBCSI":
-            r"\bwbc\b\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXPLTSI":
-            r"platelets?\s*[:\-]?\s*(\d+(?:\.\d+)?)",
-
-        "LBXCRP":
-            r"\bcrp\b\s*[:\-]?\s*(\d+(?:\.\d+)?)"
-    }
-
-    data = {}
-
-    for feature, pattern in patterns.items():
-
-        match = re.search(
-            pattern,
-            text
-        )
-
-        if match:
-            data[feature] = number(
-                match.group(1)
-            )
-
-    if "female" in text:
-        data["RIAGENDR"] = 2
-
-    elif "male" in text:
-        data["RIAGENDR"] = 1
-
-    return data
+schedule_model = joblib.load(
+    os.path.join(
+        MODEL_DIR,
+        "best_schedule_model.joblib"
+    )
+)
 
 
-# PDF/Image -> OCR -> Mapping -> Prediction
-@app.post("/predict-report")
-async def report_predict(
-    file: UploadFile = File(...)
+
+class PatientInput(BaseModel):
+
+    Primary_Diagnosis: str
+    Procedure_Performed: str
+    Room_Type: str
+    Bed_Days: float
+    Supplies_Used: str
+    Equipment_Used: str
+
+
+
+class StaffInput(BaseModel):
+
+    Staff_Type: str
+    Current_Assignment: str
+    Hours_Worked: float
+    Overtime_Hours: float
+
+
+
+
+class ScheduleInput(BaseModel):
+
+    Department: str
+    shift_duration_hours: float
+    workdays_per_month: float
+    years_of_experience: float
+    absenteeism_days: float
+
+
+
+class DepartmentStaffing(BaseModel):
+
+    department: str
+    required_staff: int
+    required_staff_type: str
+
+
+class StaffMember(BaseModel):
+
+    staff_id: str
+    staff_type: str
+    current_assignment: str
+    hours_worked: float
+    overtime_hours: float
+    rest_hours: float
+    shift_end: str
+
+
+
+class StaffingPlanInput(BaseModel):
+
+    departments: list[DepartmentStaffing]
+    staff: list[StaffMember]
+
+
+
+MAX_HOURS = 14
+MAX_OVERTIME = 4
+MIN_REST_HOURS = 4
+
+
+def is_staff_eligible(
+    staff,
+    target_department,
+    required_staff_type
 ):
 
-    allowed_types = {
-        "application/pdf",
-        "image/jpeg",
-        "image/png",
-        "image/webp"
+    # Staff type must match
+    if staff.staff_type != required_staff_type:
+        return False
+
+    # Staff must not already be in target department
+    if staff.current_assignment == target_department:
+        return False
+
+    # Maximum working hours
+    if staff.hours_worked >= MAX_HOURS:
+        return False
+
+    # Maximum overtime
+    if staff.overtime_hours >= MAX_OVERTIME:
+        return False
+
+    # Minimum rest requirement
+    if staff.rest_hours < MIN_REST_HOURS:
+        return False
+
+    return True
+
+
+@app.get("/")
+def home():
+
+    return {
+        "message": "Hospital Staff Scheduling API",
+        "status": "running"
     }
 
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400,
-            detail="Upload PDF, JPG, PNG or WEBP."
-        )
 
-    file_bytes = await file.read()
 
-    if not file_bytes:
-        raise HTTPException(
-            status_code=400,
-            detail="Uploaded file is empty."
-        )
+@app.get("/health")
+def health():
 
-    # OCR
-    ocr_text = get_ocr(
-        file_bytes,
-        file.content_type
-    )
-
-    if not ocr_text.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="No readable text found."
-        )
-
-    # Mapping
-    patient_data = extract_features(
-        ocr_text
-    )
-
-    if not patient_data:
-        raise HTTPException(
-            status_code=400,
-            detail="No supported patient features found."
-        )
-
-    # Prediction
-    result = predict(patient_data)
-
-    # Clean response for frontend/backend
     return {
-        "status": "success",
-        "filename": file.filename,
-        **result
+        "status": "healthy",
+        "models_loaded": True
+    }
+
+
+@app.post("/predict/patient")
+def predict_patient(data: PatientInput):
+
+    input_data = pd.DataFrame([{
+
+        "Primary_Diagnosis":
+            data.Primary_Diagnosis,
+
+        "Procedure_Performed":
+            data.Procedure_Performed,
+
+        "Room_Type":
+            data.Room_Type,
+
+        "Bed_Days":
+            data.Bed_Days,
+
+        "Supplies_Used":
+            data.Supplies_Used,
+
+        "Equipment_Used":
+            data.Equipment_Used
+
+    }])
+
+    prediction = patient_model.predict(
+        input_data
+    )[0]
+
+    return {
+        "predicted_staff_needed":
+            round(float(prediction))
+    }
+
+
+
+
+@app.post("/predict/staff")
+def predict_staff(data: StaffInput):
+
+    input_data = pd.DataFrame([{
+
+        "Staff_Type":
+            data.Staff_Type,
+
+        "Current_Assignment":
+            data.Current_Assignment,
+
+        "Hours_Worked":
+            data.Hours_Worked,
+
+        "Overtime_Hours":
+            data.Overtime_Hours
+
+    }])
+
+    prediction = staff_model.predict(
+        input_data
+    )[0]
+
+    return {
+        "predicted_patients_assigned":
+            round(float(prediction))
+    }
+
+
+@app.post("/predict/schedule")
+def predict_schedule(data: ScheduleInput):
+
+    input_data = pd.DataFrame([{
+
+        "Department":
+            data.Department,
+
+        "Shift Duration (Hours)":
+            data.shift_duration_hours,
+
+        "Workdays per Month":
+            data.workdays_per_month,
+
+        "Years of Experience":
+            data.years_of_experience,
+
+        "Absenteeism (Days)":
+            data.absenteeism_days
+
+    }])
+
+    prediction = schedule_model.predict(
+        input_data
+    )[0]
+
+    prediction = int(prediction)
+
+    result = {
+
+        "overload_prediction":
+            prediction,
+
+        "status":
+            "OVERLOAD"
+            if prediction == 1
+            else "NORMAL"
+    }
+
+    # Return probability if model supports it
+    if hasattr(schedule_model, "predict_proba"):
+
+        probability = schedule_model.predict_proba(
+            input_data
+        )[0][1]
+
+        result["overload_probability"] = round(
+            float(probability),
+            4
+        )
+
+    return result
+
+
+
+@app.post("/staffing-plan")
+def staffing_plan(data: StaffingPlanInput):
+
+    
+    department_staff = {}
+
+    for department in data.departments:
+
+        department_staff[
+            department.department
+        ] = []
+
+
+   
+
+    for staff in data.staff:
+
+        if staff.current_assignment in department_staff:
+
+            department_staff[
+                staff.current_assignment
+            ].append(staff)
+
+
+   
+
+    department_plan = []
+
+    for department in data.departments:
+
+        available_staff = len(
+            department_staff[
+                department.department
+            ]
+        )
+
+        required_staff = department.required_staff
+
+        gap = (
+            required_staff
+            - available_staff
+        )
+
+        if gap > 0:
+
+            status = "SHORTAGE"
+
+        elif gap < 0:
+
+            status = "EXCESS"
+
+        else:
+
+            status = "NORMAL"
+
+        department_plan.append({
+
+            "department":
+                department.department,
+
+            "required_staff":
+                required_staff,
+
+            "available_staff":
+                available_staff,
+
+            "staff_gap":
+                gap,
+
+            "status":
+                status
+        })
+
+
+    
+
+    shortage_departments = []
+
+    for department in data.departments:
+
+        available_staff = len(
+            department_staff[
+                department.department
+            ]
+        )
+
+        shortage = (
+            department.required_staff
+            - available_staff
+        )
+
+        if shortage > 0:
+
+            shortage_departments.append({
+
+                "department":
+                    department.department,
+
+                "shortage":
+                    shortage,
+
+                "required_staff_type":
+                    department.required_staff_type
+            })
+
+
+    
+    excess_departments = []
+
+    for department in data.departments:
+
+        available_staff = len(
+            department_staff[
+                department.department
+            ]
+        )
+
+        excess = (
+            available_staff
+            - department.required_staff
+        )
+
+        if excess > 0:
+
+            excess_departments.append({
+
+                "department":
+                    department.department,
+
+                "excess":
+                    excess
+            })
+
+
+    
+
+    reallocation_recommendations = []
+
+    for shortage in shortage_departments:
+
+        target_department = (
+            shortage["department"]
+        )
+
+        required_staff_type = (
+            shortage["required_staff_type"]
+        )
+
+        remaining_shortage = (
+            shortage["shortage"]
+        )
+
+        for excess in excess_departments:
+
+            if remaining_shortage <= 0:
+                break
+
+            if excess["excess"] <= 0:
+                continue
+
+            source_department = (
+                excess["department"]
+            )
+
+
+           
+            eligible_staff = []
+
+            for staff in data.staff:
+
+                if (
+                    staff.current_assignment
+                    != source_department
+                ):
+                    continue
+
+                if is_staff_eligible(
+                    staff,
+                    target_department,
+                    required_staff_type
+                ):
+
+                    eligible_staff.append(staff)
+
+
+           
+            for staff in eligible_staff:
+
+                if remaining_shortage <= 0:
+                    break
+
+                if excess["excess"] <= 0:
+                    break
+
+                reallocation_recommendations.append({
+
+                    "staff_id":
+                        staff.staff_id,
+
+                    "staff_type":
+                        staff.staff_type,
+
+                    "from_department":
+                        source_department,
+
+                    "to_department":
+                        target_department,
+
+                    "hours_worked":
+                        staff.hours_worked,
+
+                    "overtime_hours":
+                        staff.overtime_hours,
+
+                    "rest_hours":
+                        staff.rest_hours,
+
+                    "recommendation":
+                        "REALLOCATE"
+                })
+
+                remaining_shortage -= 1
+
+                excess["excess"] -= 1
+
+
+    
+
+    return {
+
+        "department_staffing_plan":
+            department_plan,
+
+        "reallocation_recommendations":
+            reallocation_recommendations
+
     }

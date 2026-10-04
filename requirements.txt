@@ -1,9 +1,8 @@
+
 fastapi
-uvicorn
-python-multipart
-joblib
+uvicorn[standard]
+pydantic
+pandas
 numpy
 scikit-learn
-pytesseract
-Pillow
-pdf2image
+joblib
