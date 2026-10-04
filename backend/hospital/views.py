@@ -133,10 +133,10 @@ class RegisterView(APIView):
                     return Response({"error": "OTP has expired. Please request a new OTP."}, status=status.HTTP_400_BAD_REQUEST)
                 otp_record.is_verified = True
                 otp_record.save()
-            else:
-                if not otp_record or not otp_record.is_verified:
+            elif otp_record:
+                if not otp_record.is_verified:
                     return Response(
-                        {"error": "Email is not verified via OTP. Please send and verify OTP before creating an account."},
+                        {"error": "Email OTP was requested but not verified yet. Please verify OTP before creating an account."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 if otp_record.is_expired():
@@ -162,6 +162,7 @@ class RegisterView(APIView):
                 status=status.HTTP_201_CREATED
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 
