@@ -82,7 +82,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
 
         if user.role == User.Role.PATIENT:
-            PatientProfile.objects.update_or_create(
+            PatientProfile.objects.get_or_create(
                 user=user,
                 defaults={'date_of_birth': date_of_birth} if date_of_birth else {}
             )
@@ -101,11 +101,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             if available_days is not None:
                 doc_defaults['available_days'] = available_days
 
-            DoctorProfile.objects.update_or_create(
+            DoctorProfile.objects.get_or_create(
                 user=user,
                 defaults=doc_defaults
             )
         return user
+
 
 
 
