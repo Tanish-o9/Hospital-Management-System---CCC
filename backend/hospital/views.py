@@ -71,8 +71,7 @@ class SendOTPView(APIView):
             return Response(
                 {
                     "message": "OTP sent successfully to email.",
-                    "email": email,
-                    "otp": otp_code
+                    "email": email
                 },
                 status=status.HTTP_200_OK
             )
@@ -122,8 +121,33 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
+            email = serializer.validated_data.get('email')
+            provided_otp = request.data.get('otp') or serializer.validated_data.get('otp')
+
+            otp_record = OTPVerification.objects.filter(email=email).first()
+
+            if provided_otp:
+                if not otp_record or otp_record.otp_code != provided_otp:
+                    return Response({"error": "Invalid OTP code provided for registration."}, status=status.HTTP_400_BAD_REQUEST)
+                if otp_record.is_expired():
+                    return Response({"error": "OTP has expired. Please request a new OTP."}, status=status.HTTP_400_BAD_REQUEST)
+                otp_record.is_verified = True
+                otp_record.save()
+            elif otp_record:
+                if not otp_record.is_verified:
+                    return Response(
+                        {"error": "Email OTP was requested but not verified yet. Please verify OTP before creating an account."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if otp_record.is_expired():
+                    return Response({"error": "OTP verification expired. Please request a new OTP."}, status=status.HTTP_400_BAD_REQUEST)
+
             user = serializer.save()
             
+            # Cleanup OTP verification record after successful account creation
+            if otp_record:
+                otp_record.delete()
+
             user_data = UserSerializer(user).data
             if hasattr(user, 'patient_profile') and user.patient_profile:
                 user_data['patient_profile'] = PatientProfileSerializer(user.patient_profile).data
@@ -140,6 +164,8 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+
 class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -153,7 +179,7 @@ class MeView(APIView):
 # ==================================================
 
 class DoctorListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         doctors = DoctorProfile.objects.select_related('user').all()
@@ -162,7 +188,7 @@ class DoctorListView(APIView):
 
 
 class DoctorDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, pk):
         try:
@@ -174,15 +200,12 @@ class DoctorDetailView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+
 class DoctorMyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def get(self, request):
-        try:
-            profile = request.user.doctor_profile
-        except DoctorProfile.DoesNotExist:
-            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+        profile, _ = DoctorProfile.objects.get_or_create(user=request.user)
         serializer = DoctorProfileSerializer(profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -258,11 +281,7 @@ class PatientMyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
     def get(self, request):
-        try:
-            profile = request.user.patient_profile
-        except PatientProfile.DoesNotExist:
-            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+        profile, _ = PatientProfile.objects.get_or_create(user=request.user)
         serializer = PatientProfileSerializer(profile)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -650,10 +669,7 @@ class DoctorDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsDoctor]
 
     def get(self, request):
-        try:
-            doctor_profile = request.user.doctor_profile
-        except DoctorProfile.DoesNotExist:
-            return Response({"error": "Doctor profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        doctor_profile, _ = DoctorProfile.objects.get_or_create(user=request.user)
 
         appointments_qs = Appointment.objects.filter(doctor=doctor_profile)
         
@@ -681,10 +697,7 @@ class PatientDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsPatient]
 
     def get(self, request):
-        try:
-            patient_profile = request.user.patient_profile
-        except PatientProfile.DoesNotExist:
-            return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        patient_profile, _ = PatientProfile.objects.get_or_create(user=request.user)
 
         appointments_qs = Appointment.objects.filter(patient=patient_profile)
         prescriptions_qs = Prescription.objects.filter(patient=patient_profile)

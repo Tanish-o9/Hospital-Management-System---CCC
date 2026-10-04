@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
-from .models import DoctorProfile, PatientProfile, Appointment, Bill, MedicalRecord, Prescription
+from .models import OTPVerification, DoctorProfile, PatientProfile, Appointment, Bill, MedicalRecord, Prescription
 
 User = get_user_model()
 
@@ -48,6 +48,7 @@ class HospitalManagementTests(APITestCase):
         )
 
     def test_user_registration(self):
+        OTPVerification.objects.create(email='new_patient@test.com', otp_code='123456', is_verified=True)
         url = reverse('auth-register')
         data = {
             'username': 'new_patient',
@@ -62,7 +63,22 @@ class HospitalManagementTests(APITestCase):
         patient_profile = PatientProfile.objects.get(user__username='new_patient')
         self.assertEqual(str(patient_profile.date_of_birth), '1998-08-20')
 
+    def test_registration_fails_without_otp(self):
+        OTPVerification.objects.create(email='unverified@test.com', otp_code='123456', is_verified=False)
+        url = reverse('auth-register')
+        data = {
+            'username': 'unverified_patient',
+            'email': 'unverified@test.com',
+            'password': 'password123',
+            'role': 'PATIENT'
+        }
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('Email OTP was requested but not verified yet', str(response.data))
+
+
     def test_user_registration_with_dob_alias(self):
+        OTPVerification.objects.create(email='new_patient_dob@test.com', otp_code='123456', is_verified=True)
         url = reverse('auth-register')
         data = {
             'username': 'new_patient_dob',
@@ -77,6 +93,7 @@ class HospitalManagementTests(APITestCase):
         self.assertEqual(str(patient_profile.date_of_birth), '2000-05-15')
 
     def test_doctor_registration_with_profile(self):
+        OTPVerification.objects.create(email='new_doc@test.com', otp_code='123456', is_verified=True)
         url = reverse('auth-register')
         data = {
             'username': 'new_doc',
@@ -95,6 +112,7 @@ class HospitalManagementTests(APITestCase):
         self.assertEqual(doc_profile.qualification, 'MD, DM')
         self.assertEqual(doc_profile.experience, 8)
         self.assertEqual(float(doc_profile.consultation_fee), 850.00)
+
 
     def test_login_and_jwt_token(self):
         url = reverse('auth-login')
@@ -167,9 +185,9 @@ class HospitalManagementTests(APITestCase):
         data = {'email': 'otp_test@example.com'}
         response = self.client.post(send_url, data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('otp', response.data)
         
-        otp_code = response.data['otp']
+        otp_record = OTPVerification.objects.get(email='otp_test@example.com')
+        otp_code = otp_record.otp_code
 
         verify_url = reverse('auth-verify-otp')
         verify_data = {'email': 'otp_test@example.com', 'otp': otp_code}
