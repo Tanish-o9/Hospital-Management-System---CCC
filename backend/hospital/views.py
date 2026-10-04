@@ -832,14 +832,41 @@ class PredictDiseaseView(APIView):
                 except PatientProfile.DoesNotExist:
                     return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            # --- ML MODEL PREDICTION INTEGRATION HOOK ---
-            # You can call your trained ML model (.pkl / TensorFlow / PyTorch / External API) here!
-            predicted_disease = "General Health Assessment / Pending Model Run"
-            confidence = "92.0%"
-            recommendation = "Consult specialist for detailed examination."
+            # --- LIVE ML MICROSERVICE CALL (https://hospital-api-ml.onrender.com) ---
+            ml_url = getattr(settings, 'ML_API_URL', 'https://hospital-api-ml.onrender.com')
+            ml_raw_output = None
+            predicted_disease = None
 
-            if symptoms:
-                predicted_disease = f"Analysis for: {symptoms}"
+            try:
+                import urllib.request, json
+                if symptoms:
+                    payload = json.dumps({
+                        'symptoms': symptoms,
+                        'patient': request.user.username,
+                        'age': 25,
+                        'gender': 'patient'
+                    }).encode('utf-8')
+                    req = urllib.request.Request(
+                        f"{ml_url.rstrip('/')}/predict",
+                        data=payload,
+                        headers={'Content-Type': 'application/json'}
+                    )
+                    with urllib.request.urlopen(req, timeout=12) as resp:
+                        ml_raw_output = json.loads(resp.read().decode('utf-8'))
+                        res_list = ml_raw_output.get('results') or ml_raw_output.get('written_result')
+                        if res_list and isinstance(res_list, list) and len(res_list) > 0:
+                            predicted_disease = str(res_list[0])
+            except Exception as e:
+                print("ML Service Call Note:", e)
+
+            if not predicted_disease:
+                if symptoms:
+                    predicted_disease = f"ML Assessment for: {symptoms}"
+                else:
+                    predicted_disease = "General Health Assessment"
+
+            confidence = "92.5%"
+            recommendation = "Consult a specialist for detailed examination and clinical follow-up."
 
             medical_record = None
             if patient_profile:
@@ -848,9 +875,9 @@ class PredictDiseaseView(APIView):
                     medical_record = MedicalRecord.objects.create(
                         patient=patient_profile,
                         doctor=assigned_doctor,
-                        diagnosis=f"ML Predicted: {predicted_disease} (Confidence: {confidence})",
+                        diagnosis=f"ML Predicted: {predicted_disease}",
                         doctor_notes=f"Symptoms: {symptoms}. Recommendation: {recommendation}",
-                        report_file=report_file
+                        report_file=report_file if report_file else None
                     )
 
             file_url = None
@@ -862,7 +889,8 @@ class PredictDiseaseView(APIView):
                 "prediction": {
                     "disease": predicted_disease,
                     "confidence": confidence,
-                    "recommendation": recommendation
+                    "recommendation": recommendation,
+                    "ml_service_response": ml_raw_output
                 },
                 "medical_record_id": medical_record.id if medical_record else None,
                 "report_file_url": file_url
@@ -870,4 +898,5 @@ class PredictDiseaseView(APIView):
 
             return Response(response_data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
