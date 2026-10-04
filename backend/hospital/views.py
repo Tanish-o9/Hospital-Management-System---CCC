@@ -71,8 +71,7 @@ class SendOTPView(APIView):
             return Response(
                 {
                     "message": "OTP sent successfully to email.",
-                    "email": email,
-                    "otp": otp_code
+                    "email": email
                 },
                 status=status.HTTP_200_OK
             )

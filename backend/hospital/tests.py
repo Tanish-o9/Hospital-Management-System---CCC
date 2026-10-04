@@ -167,9 +167,9 @@ class HospitalManagementTests(APITestCase):
         data = {'email': 'otp_test@example.com'}
         response = self.client.post(send_url, data)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('otp', response.data)
         
-        otp_code = response.data['otp']
+        otp_record = OTPVerification.objects.get(email='otp_test@example.com')
+        otp_code = otp_record.otp_code
 
         verify_url = reverse('auth-verify-otp')
         verify_data = {'email': 'otp_test@example.com', 'otp': otp_code}
