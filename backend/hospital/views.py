@@ -1,4 +1,5 @@
 from django.utils import timezone
+import requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions, parsers
@@ -776,60 +777,213 @@ class RootApiView(APIView):
 
 class PredictDiseaseView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    parser_classes = [
+        parsers.MultiPartParser,
+        parsers.FormParser,
+        parsers.JSONParser
+    ]
 
     def post(self, request):
         serializer = PredictDiseaseSerializer(data=request.data)
-        if serializer.is_valid():
-            symptoms = serializer.validated_data.get('symptoms', '')
-            report_file = request.FILES.get('report_file') or serializer.validated_data.get('report_file')
-            patient_id = serializer.validated_data.get('patient_id')
 
-            patient_profile = None
-            if request.user.role == User.Role.PATIENT:
-                patient_profile, _ = PatientProfile.objects.get_or_create(user=request.user)
-            elif patient_id:
-                try:
-                    patient_profile = PatientProfile.objects.get(pk=patient_id)
-                except PatientProfile.DoesNotExist:
-                    return Response({"error": "Patient profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            # --- ML MODEL PREDICTION INTEGRATION HOOK ---
-            # You can call your trained ML model (.pkl / TensorFlow / PyTorch / External API) here!
-            predicted_disease = "General Health Assessment / Pending Model Run"
-            confidence = "92.0%"
-            recommendation = "Consult specialist for detailed examination."
+        symptoms = serializer.validated_data.get('symptoms', '')
+        report_file = request.FILES.get('report_file')
+        patient_id = serializer.validated_data.get('patient_id')
 
-            if symptoms:
-                predicted_disease = f"Analysis for: {symptoms}"
+        # Find patient profile
+        patient_profile = None
 
-            medical_record = None
-            if patient_profile:
-                assigned_doctor = DoctorProfile.objects.first()
-                if assigned_doctor:
-                    medical_record = MedicalRecord.objects.create(
-                        patient=patient_profile,
-                        doctor=assigned_doctor,
-                        diagnosis=f"ML Predicted: {predicted_disease} (Confidence: {confidence})",
-                        doctor_notes=f"Symptoms: {symptoms}. Recommendation: {recommendation}",
-                        report_file=report_file
+        if request.user.role == User.Role.PATIENT:
+            patient_profile, _ = PatientProfile.objects.get_or_create(
+                user=request.user
+            )
+
+        elif patient_id:
+            try:
+                patient_profile = PatientProfile.objects.get(
+                    pk=patient_id
+                )
+            except PatientProfile.DoesNotExist:
+                return Response(
+                    {"error": "Patient profile not found."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        # ==================================================
+        # CALL FASTAPI ML SERVICE
+        # ==================================================
+
+        ml_api_url = getattr(
+            settings,
+            'ML_API_URL',
+            'http://ml:8001'
+        )
+
+        predicted_disease = "Unable to determine"
+        confidence = "0%"
+        recommendation = (
+            "Please consult a doctor for further evaluation."
+        )
+
+        try:
+            if not report_file:
+                return Response(
+                    {
+                        "error": (
+                            "A medical report file is required "
+                            "for ML prediction."
+                        ),
+                        "message": (
+                            "Upload a PDF or image medical report."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            report_file.seek(0)
+
+            files = {
+                'file': (
+                    report_file.name,
+                    report_file.read(),
+                    getattr(
+                        report_file,
+                        'content_type',
+                        'application/octet-stream'
                     )
-
-            file_url = None
-            if medical_record and medical_record.report_file:
-                file_url = request.build_absolute_uri(medical_record.report_file.url)
-
-            response_data = {
-                "message": "ML Disease prediction process completed.",
-                "prediction": {
-                    "disease": predicted_disease,
-                    "confidence": confidence,
-                    "recommendation": recommendation
-                },
-                "medical_record_id": medical_record.id if medical_record else None,
-                "report_file_url": file_url
+                )
             }
 
-            return Response(response_data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            ml_response = requests.post(
+                f"{ml_api_url}/predict-report",
+                files=files,
+                timeout=120
+            )
 
+            ml_response.raise_for_status()
+
+            ml_result = ml_response.json()
+
+            results = ml_result.get("results", [])
+
+            if results:
+                highest_risk = max(
+                    results,
+                    key=lambda item: item.get(
+                        "risk_percent",
+                        0
+                    )
+                )
+
+                predicted_disease = highest_risk.get(
+                    "disease",
+                    "Unknown"
+                )
+
+                risk_percent = highest_risk.get(
+                    "risk_percent",
+                    0
+                )
+
+                risk_level = highest_risk.get(
+                    "risk_level",
+                    "Unknown"
+                )
+
+                confidence = f"{risk_percent}%"
+
+                recommendation = (
+                    f"Risk level: {risk_level}. "
+                    "Consult a qualified doctor for "
+                    "clinical evaluation."
+                )
+
+            else:
+                predicted_disease = (
+                    "No disease risk detected"
+                )
+                confidence = "0%"
+                recommendation = (
+                    "No significant disease risk was "
+                    "identified. Consult a doctor if "
+                    "symptoms persist."
+                )
+
+        except requests.exceptions.RequestException as exc:
+            return Response(
+                {
+                    "error": "ML service is currently unavailable.",
+                    "details": str(exc)
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        except Exception as exc:
+            return Response(
+                {
+                    "error": "ML prediction failed.",
+                    "details": str(exc)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # ==================================================
+        # SAVE MEDICAL RECORD
+        # ==================================================
+
+        medical_record = None
+
+        if patient_profile:
+            assigned_doctor = DoctorProfile.objects.first()
+
+            if assigned_doctor:
+                medical_record = MedicalRecord.objects.create(
+                    patient=patient_profile,
+                    doctor=assigned_doctor,
+                    diagnosis=(
+                        f"ML Predicted: {predicted_disease} "
+                        f"(Confidence: {confidence})"
+                    ),
+                    doctor_notes=(
+                        f"Symptoms: {symptoms}. "
+                        f"Recommendation: {recommendation}"
+                    ),
+                    report_file=report_file
+                )
+
+        # ==================================================
+        # RESPONSE
+        # ==================================================
+
+        file_url = None
+
+        if medical_record and medical_record.report_file:
+            file_url = request.build_absolute_uri(
+                medical_record.report_file.url
+            )
+
+        response_data = {
+            "message": "ML Disease prediction completed.",
+            "prediction": {
+                "disease": predicted_disease,
+                "confidence": confidence,
+                "recommendation": recommendation
+            },
+            "medical_record_id": (
+                medical_record.id
+                if medical_record
+                else None
+            ),
+            "report_file_url": file_url
+        }
+
+        return Response(
+            response_data,
+            status=status.HTTP_200_OK
+        )
