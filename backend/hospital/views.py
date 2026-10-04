@@ -179,7 +179,7 @@ class MeView(APIView):
 # ==================================================
 
 class DoctorListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request):
         doctors = DoctorProfile.objects.select_related('user').all()
@@ -188,7 +188,7 @@ class DoctorListView(APIView):
 
 
 class DoctorDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def get(self, request, pk):
         try:
@@ -198,6 +198,7 @@ class DoctorDetailView(APIView):
         
         serializer = DoctorProfileSerializer(doctor)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 
 class DoctorMyProfileView(APIView):
