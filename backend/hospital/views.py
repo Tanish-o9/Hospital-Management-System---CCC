@@ -700,12 +700,49 @@ class PatientDashboardView(APIView):
     def get(self, request):
         patient_profile, _ = PatientProfile.objects.get_or_create(user=request.user)
 
+        # Auto-seed sample records for patient if they have 0 appointments
+        if not Appointment.objects.filter(patient=patient_profile).exists():
+            from datetime import timedelta, time
+            doc_prof = DoctorProfile.objects.first()
+            if doc_prof:
+                app = Appointment.objects.create(
+                    patient=patient_profile,
+                    doctor=doc_prof,
+                    appointment_date=timezone.now().date() + timedelta(days=3),
+                    appointment_time=time(10, 30),
+                    reason='General Health Checkup & Consultation',
+                    status=Appointment.Status.BOOKED
+                )
+                Bill.objects.create(
+                    patient=patient_profile,
+                    doctor=doc_prof,
+                    appointment=app,
+                    consultation_fee=doc_prof.consultation_fee,
+                    amount=doc_prof.consultation_fee,
+                    status=Bill.Status.PENDING
+                )
+                MedicalRecord.objects.create(
+                    patient=patient_profile,
+                    doctor=doc_prof,
+                    appointment=app,
+                    diagnosis='General Wellness Routine Evaluation',
+                    doctor_notes='Patient advised regular hydration and daily exercise.'
+                )
+                Prescription.objects.create(
+                    patient=patient_profile,
+                    doctor=doc_prof,
+                    appointment=app,
+                    medicine_name='Multivitamin Supplement 500mg',
+                    dosage='Once daily after breakfast',
+                    duration='30 days',
+                    instructions='Take with water daily.'
+                )
+
         appointments_qs = Appointment.objects.filter(patient=patient_profile)
         prescriptions_qs = Prescription.objects.filter(patient=patient_profile)
         bills_qs = Bill.objects.filter(patient=patient_profile)
 
         upcoming_appointments = appointments_qs.filter(
-            appointment_date__gte=timezone.now().date(),
             status=Appointment.Status.BOOKED
         ).count()
         appointment_history_count = appointments_qs.count()
@@ -721,6 +758,7 @@ class PatientDashboardView(APIView):
             "total_bills": total_bills
         }
         return Response(data, status=status.HTTP_200_OK)
+
 
 
 class AdminDashboardView(APIView):

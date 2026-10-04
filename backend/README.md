@@ -1,163 +1,587 @@
-# Hospital Management System Backend (Single-App Django Architecture)
+# 📌 MediSetu Hospital Backend API Documentation
 
-A minimal, clean, and beginner-friendly Django & Django REST Framework (DRF) backend implementing a complete Hospital & Clinic Management System inside a single application `hospital`.
+## 🌐 BASE URL
 
----
-
-## 📁 Project Structure
-
-```
-hospital_management/
-├── manage.py
-├── requirements.txt
-├── .env.example
-├── .env
-├── seed_demo_data.py
-├── README.md
-├── config/
-│   ├── __init__.py
-│   ├── settings.py
-│   ├── urls.py
-│   ├── asgi.py
-│   └── wsgi.py
-│
-└── hospital/
-    ├── migrations/
-    │   └── 0001_initial.py
-    ├── __init__.py
-    ├── admin.py
-    ├── apps.py
-    ├── models.py
-    ├── serializers.py
-    ├── views.py
-    ├── urls.py
-    ├── permissions.py
-    └── tests.py
+```text
+https://hospital-management-system-ccc.onrender.com
 ```
 
 ---
 
-## 🛠 Tech Stack
+## 1. Auth Routes (`/api/auth`)
 
-- **Framework**: Django 5.x & Django REST Framework (DRF)
-- **Authentication**: SimpleJWT (`djangorestframework-simplejwt`)
-- **Database**: PostgreSQL (if `DATABASE_URL` is set in `.env`), otherwise SQLite.
-- **Environment Management**: `python-dotenv` & `dj-database-url`
-- **CORS**: `django-cors-headers`
+### ◆ Route 1.1: Send Email OTP
 
----
-
-## ⚙️ Setup & Installation
-
-### 1. Clone & Activate Virtual Environment
-
-```bash
-cd hospital_management
-python -m venv .venv
-
-# Activate:
-# Windows:
-..\.venv\Scripts\activate
-# Linux/macOS:
-source ../.venv/bin/activate
-```
-
-### 2. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Run Database Migrations
-
-```bash
-python manage.py makemigrations hospital
-python manage.py migrate
-```
-
-### 4. Seed Demo Data (Optional)
-
-Populate default demo users (Admin, Doctor, Patient) and sample appointment/record data:
-
-```bash
-python seed_demo_data.py
-```
-
-### 5. Run Unit Tests
-
-```bash
-python manage.py test hospital
-```
-
-### 6. Start Development Server
-
-```bash
-python manage.py runserver
-```
-The server will run at: `http://127.0.0.1:8000/`
+- **Method**: `POST`
+- **Endpoint**: `/api/auth/send-otp/`
+- **Auth Required**: `NO`
+- **Request Body Example**:
+  ```json
+  {
+    "email": "tanishrajput673@gmail.com"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "message": "OTP sent successfully to email.",
+    "email": "tanishrajput673@gmail.com"
+  }
+  ```
 
 ---
 
-## 🔑 Pre-Configured Test Credentials
+### ◆ Route 1.2: Verify Email OTP
 
-| Role | Username | Password | Email |
-|---|---|---|---|
-| **Admin** | `admin` | `admin123` | `admin@hospital.com` |
-| **Doctor** | `dr_smith` | `doctor123` | `smith@hospital.com` |
-| **Patient** | `john_doe` | `patient123` | `john@example.com` |
+- **Method**: `POST`
+- **Endpoint**: `/api/auth/verify-otp/`
+- **Auth Required**: `NO`
+- **Request Body Example**:
+  ```json
+  {
+    "email": "tanishrajput673@gmail.com",
+    "otp": "123456"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "message": "OTP verified successfully.",
+    "email": "tanishrajput673@gmail.com",
+    "is_verified": true
+  }
+  ```
 
 ---
 
-## 📡 API Endpoints List
+### ◆ Route 1.3: User Registration (Sign Up)
 
-### 1. Authentication & Free Email OTP
-- `POST /api/auth/send-otp/` - Send 6-digit OTP to user's email (`{ "email": "user@example.com" }`)
-- `POST /api/auth/verify-otp/` - Verify OTP (`{ "email": "user@example.com", "otp": "123456" }`)
-- `POST /api/auth/register/` - Register Doctor or Patient (`role`: `DOCTOR` | `PATIENT`, optional patient field: `date_of_birth`/`dob`, optional doctor fields: `specialization`, `qualification`, `experience`, `consultation_fee`, `phone`, `available_days`)
-- `POST /api/auth/login/` - Login & receive JWT access + refresh tokens
-- `POST /api/auth/refresh/` - Refresh JWT access token
-- `GET  /api/auth/me/` - Retrieve authenticated user profile
+- **Method**: `POST`
+- **Endpoint**: `/api/auth/register/`
+- **Auth Required**: `NO`
+- **Request Body Example**:
+  ```json
+  {
+    "username": "tanish_kumar",
+    "email": "tanishrajput673@gmail.com",
+    "password": "password123",
+    "first_name": "Tanish",
+    "last_name": "Kumar",
+    "role": "PATIENT",
+    "date_of_birth": "2008-10-17"
+  }
+  ```
+- **Response Type (`201 Created`)**:
+  ```json
+  {
+    "message": "User registered successfully.",
+    "user": {
+      "id": 3,
+      "username": "tanish_kumar",
+      "email": "tanishrajput673@gmail.com",
+      "first_name": "Tanish",
+      "last_name": "Kumar",
+      "role": "PATIENT",
+      "patient_profile": {
+        "id": 1,
+        "date_of_birth": "2008-10-17",
+        "gender": null,
+        "phone": null,
+        "blood_group": null
+      }
+    }
+  }
+  ```
 
-### 2. Doctor Management
-- `GET  /api/doctors/` - List all doctors
-- `GET  /api/doctors/my-profile/` - View current doctor's profile
-- `POST /api/doctors/profile/` - Create doctor profile
-- `PUT  /api/doctors/profile/` - Update current doctor's profile
-- `GET  /api/doctors/<int:pk>/` - View specific doctor profile
+---
 
-### 3. Patient Management
-- `GET  /api/patients/` - List all patients (Doctors & Admins)
-- `GET  /api/patients/my-profile/` - View current patient's profile
-- `POST /api/patients/profile/` - Create patient profile
-- `PUT  /api/patients/profile/` - Update current patient's profile
-- `GET  /api/patients/<int:pk>/` - View specific patient profile
+### ◆ Route 1.4: User Sign In (Login)
 
-### 4. Appointments
-- `GET  /api/appointments/` - List appointments. Filters: `?status=BOOKED`, `?upcoming=true`
-- `POST /api/appointments/` - Book an appointment (Auto-generates Bill)
-- `GET  /api/appointments/<int:pk>/` - View appointment details
-- `PUT  /api/appointments/<int:pk>/` - Update appointment status (`BOOKED`, `COMPLETED`, `CANCELLED`)
-- `DELETE /api/appointments/<int:pk>/` - Cancel/Delete appointment
+- **Method**: `POST`
+- **Endpoint**: `/api/auth/login/`
+- **Auth Required**: `NO`
+- **Request Body Example**:
+  ```json
+  {
+    "username": "john_doe",
+    "password": "patient123"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": 3,
+      "username": "john_doe",
+      "email": "john@example.com",
+      "first_name": "John",
+      "last_name": "Doe",
+      "role": "PATIENT"
+    }
+  }
+  ```
 
-### 5. Medical Records
-- `GET  /api/medical-records/` - List medical records
-- `POST /api/medical-records/` - Create medical record (Doctors & Admins)
-- `GET  /api/medical-records/<int:pk>/` - View medical record details
-- `PUT  /api/medical-records/<int:pk>/` - Update medical record (Doctors & Admins)
+---
 
-### 6. Prescriptions
-- `GET  /api/prescriptions/` - List prescriptions
-- `POST /api/prescriptions/` - Create prescription (Doctors & Admins)
-- `GET  /api/prescriptions/<int:pk>/` - View prescription details
-- `PUT  /api/prescriptions/<int:pk>/` - Update prescription (Doctors & Admins)
+### ◆ Route 1.5: Refresh JWT Token
 
-### 7. Billing
-- `GET  /api/bills/` - List bills
-- `POST /api/bills/` - Create bill manually (Uses doctor consultation fee)
-- `GET  /api/bills/<int:pk>/` - View bill details
-- `PUT  /api/bills/<int:pk>/` - Update bill status (`PENDING` | `PAID`)
+- **Method**: `POST`
+- **Endpoint**: `/api/auth/refresh/`
+- **Auth Required**: `NO`
+- **Request Body Example**:
+  ```json
+  {
+    "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+  ```
 
-### 8. Dashboards
-- `GET /api/dashboard/doctor/` - Doctor metrics (total/upcoming/completed appointments, patient count, recent list)
-- `GET /api/dashboard/patient/` - Patient metrics (upcoming appointments, appointment history count, recent prescriptions, pending/total bills)
-- `GET /api/dashboard/admin/` - Platform-wide statistics (doctors, patients, appointments, billing totals)
+---
+
+### ◆ Route 1.6: Get Current User Profile
+
+- **Method**: `GET`
+- **Endpoint**: `/api/auth/me/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "id": 3,
+    "username": "john_doe",
+    "email": "john@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "role": "PATIENT",
+    "patient_profile": {
+      "id": 1,
+      "date_of_birth": "1990-05-15",
+      "gender": "Male",
+      "phone": "+9876543210",
+      "address": "123 Main Street, NY",
+      "blood_group": "O+"
+    }
+  }
+  ```
+
+---
+
+## 2. Doctor Routes (`/api/doctors`)
+
+### ◆ Route 2.1: Get All Doctors
+
+- **Method**: `GET`
+- **Endpoint**: `/api/doctors/`
+- **Auth Required**: `NO`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "id": 1,
+        "user": {
+          "id": 2,
+          "username": "dr_smith",
+          "email": "smith@hospital.com",
+          "first_name": "John",
+          "last_name": "Smith",
+          "role": "DOCTOR"
+        },
+        "specialization": "Cardiology",
+        "phone": "+1234567890",
+        "qualification": "MBBS, MD (Cardiology)",
+        "experience": 10,
+        "consultation_fee": "750.00",
+        "available_days": "Monday to Friday",
+        "available_from": "09:00:00",
+        "available_to": "17:00:00"
+      }
+    ]
+  }
+  ```
+
+---
+
+### ◆ Route 2.2: Get Doctor by ID
+
+- **Method**: `GET`
+- **Endpoint**: `/api/doctors/:doctorId/`
+- **Auth Required**: `NO`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "id": 1,
+    "user": {
+      "id": 2,
+      "username": "dr_smith",
+      "email": "smith@hospital.com",
+      "first_name": "John",
+      "last_name": "Smith",
+      "role": "DOCTOR"
+    },
+    "specialization": "Cardiology",
+    "phone": "+1234567890",
+    "qualification": "MBBS, MD (Cardiology)",
+    "experience": 10,
+    "consultation_fee": "750.00",
+    "available_days": "Monday to Friday",
+    "available_from": "09:00:00",
+    "available_to": "17:00:00"
+  }
+  ```
+
+---
+
+### ◆ Route 2.3: Update Doctor Profile
+
+- **Method**: `PUT`
+- **Endpoint**: `/api/doctors/profile/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "specialization": "Cardiology & Surgery",
+    "consultation_fee": 850.00,
+    "experience": 12
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "id": 1,
+    "specialization": "Cardiology & Surgery",
+    "consultation_fee": "850.00",
+    "experience": 12
+  }
+  ```
+
+---
+
+## 3. Patient Profile Routes (`/api/patients`)
+
+### ◆ Route 3.1: Get / Update My Patient Profile
+
+- **Method**: `PUT`
+- **Endpoint**: `/api/patients/profile/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "first_name": "Tanish",
+    "last_name": "Kumar",
+    "email": "tanishrajput673@gmail.com",
+    "phone": "+917668638105",
+    "date_of_birth": "2008-10-17",
+    "gender": "Male",
+    "blood_group": "B+",
+    "address": "Delhi, India",
+    "allergies": "Penicillin, Dust",
+    "emergency_contact": "+919876543210"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "id": 1,
+    "user": {
+      "id": 3,
+      "username": "tanish_kumar",
+      "email": "tanishrajput673@gmail.com",
+      "first_name": "Tanish",
+      "last_name": "Kumar",
+      "role": "PATIENT"
+    },
+    "date_of_birth": "2008-10-17",
+    "gender": "Male",
+    "phone": "+917668638105",
+    "address": "Delhi, India",
+    "blood_group": "B+",
+    "allergies": "Penicillin, Dust",
+    "emergency_contact": "+919876543210"
+  }
+  ```
+
+---
+
+## 4. Appointment Routes (`/api/appointments`)
+
+### ◆ Route 4.1: Book an Appointment
+
+- **Method**: `POST`
+- **Endpoint**: `/api/appointments/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "doctor_id": 1,
+    "appointment_date": "2026-10-15",
+    "appointment_time": "10:30:00",
+    "reason": "Routine heart checkup and fever"
+  }
+  ```
+- **Response Type (`201 Created`)**:
+  ```json
+  {
+    "id": 5,
+    "patient": 1,
+    "patient_detail": {
+      "id": 1,
+      "user": {
+        "id": 3,
+        "username": "john_doe",
+        "first_name": "John",
+        "last_name": "Doe"
+      }
+    },
+    "doctor": 1,
+    "doctor_detail": {
+      "id": 1,
+      "specialization": "Cardiology",
+      "consultation_fee": "750.00"
+    },
+    "appointment_date": "2026-10-15",
+    "appointment_time": "10:30:00",
+    "reason": "Routine heart checkup and fever",
+    "status": "BOOKED",
+    "created_at": "2026-10-04T17:22:00.000Z"
+  }
+  ```
+
+---
+
+### ◆ Route 4.2: Get My Appointments
+
+- **Method**: `GET`
+- **Endpoint**: `/api/appointments/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  [
+    {
+      "id": 5,
+      "appointment_date": "2026-10-15",
+      "appointment_time": "10:30:00",
+      "reason": "Routine heart checkup and fever",
+      "status": "BOOKED"
+    }
+  ]
+  ```
+
+---
+
+### ◆ Route 4.3: Update Appointment Status
+
+- **Method**: `PUT`
+- **Endpoint**: `/api/appointments/:appointmentId/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "status": "COMPLETED"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "id": 5,
+    "status": "COMPLETED"
+  }
+  ```
+
+---
+
+## 5. Medical Record Routes (`/api/medical-records`)
+
+### ◆ Route 5.1: Get Medical Records
+
+- **Method**: `GET`
+- **Endpoint**: `/api/medical-records/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  [
+    {
+      "id": 1,
+      "patient": 1,
+      "doctor": 1,
+      "diagnosis": "Mild Hypertension",
+      "doctor_notes": "Patient advised low sodium diet and regular exercise.",
+      "report_file": null,
+      "created_at": "2026-10-04T16:33:21Z"
+    }
+  ]
+  ```
+
+---
+
+### ◆ Route 5.2: Create Medical Record
+
+- **Method**: `POST`
+- **Endpoint**: `/api/medical-records/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "patient_id": 1,
+    "diagnosis": "Acute Bronchitis",
+    "doctor_notes": "Prescribed antibiotics and bed rest."
+  }
+  ```
+- **Response Type (`201 Created`)**:
+  ```json
+  {
+    "id": 2,
+    "diagnosis": "Acute Bronchitis",
+    "doctor_notes": "Prescribed antibiotics and bed rest.",
+    "created_at": "2026-10-04T22:30:00Z"
+  }
+  ```
+
+---
+
+## 6. Prescriptions & Billing Routes
+
+### ◆ Route 6.1: Get Prescriptions
+
+- **Method**: `GET`
+- **Endpoint**: `/api/prescriptions/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  [
+    {
+      "id": 1,
+      "medicine_name": "Multivitamin Tabs 500mg",
+      "dosage": "Once daily after meal",
+      "duration": "15 days",
+      "instructions": "Take with water."
+    }
+  ]
+  ```
+
+---
+
+### ◆ Route 6.2: Get Bills
+
+- **Method**: `GET`
+- **Endpoint**: `/api/bills/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  [
+    {
+      "id": 1,
+      "consultation_fee": "750.00",
+      "amount": "750.00",
+      "status": "PENDING"
+    }
+  ]
+  ```
+
+---
+
+### ◆ Route 6.3: Pay Bill
+
+- **Method**: `PUT`
+- **Endpoint**: `/api/bills/:billId/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "status": "PAID"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "id": 1,
+    "amount": "750.00",
+    "status": "PAID"
+  }
+  ```
+
+---
+
+## 7. Dashboard Analytics Routes (`/api/dashboard`)
+
+### ◆ Route 7.1: Get Patient Dashboard Overview
+
+- **Method**: `GET`
+- **Endpoint**: `/api/dashboard/patient/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "upcoming_appointments": 1,
+    "appointment_history_count": 1,
+    "recent_prescriptions": [
+      {
+        "id": 1,
+        "medicine_name": "Multivitamin Tabs 500mg",
+        "dosage": "Once daily after meal",
+        "duration": "15 days"
+      }
+    ],
+    "pending_bills": 1,
+    "total_bills": 1
+  }
+  ```
+
+---
+
+### ◆ Route 7.2: Get Doctor Dashboard Overview
+
+- **Method**: `GET`
+- **Endpoint**: `/api/dashboard/doctor/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**: `None`
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "total_appointments": 5,
+    "upcoming_appointments": 2,
+    "completed_appointments": 3,
+    "total_patients": 4,
+    "recent_appointments": []
+  }
+  ```
+
+---
+
+## 8. ML Disease Prediction Route (`/api/predict-disease`)
+
+### ◆ Route 8.1: Predict Disease from Symptoms & Report File
+
+- **Method**: `POST`
+- **Endpoint**: `/api/predict-disease/`
+- **Auth Required**: `YES (Authorization: Bearer <TOKEN>)`
+- **Request Body Example**:
+  ```json
+  {
+    "symptoms": "High fever, persistent cough, chest congestion"
+  }
+  ```
+- **Response Type (`200 OK`)**:
+  ```json
+  {
+    "predicted_disease": "Analysis for: High fever, persistent cough, chest congestion",
+    "confidence": "92.0%",
+    "recommendation": "Consult specialist for detailed examination.",
+    "medical_record_id": 2
+  }
+  ```
