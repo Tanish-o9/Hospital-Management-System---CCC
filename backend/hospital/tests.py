@@ -64,6 +64,7 @@ class HospitalManagementTests(APITestCase):
         self.assertEqual(str(patient_profile.date_of_birth), '1998-08-20')
 
     def test_registration_fails_without_otp(self):
+        OTPVerification.objects.create(email='unverified@test.com', otp_code='123456', is_verified=False)
         url = reverse('auth-register')
         data = {
             'username': 'unverified_patient',
@@ -73,7 +74,8 @@ class HospitalManagementTests(APITestCase):
         }
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('Email is not verified via OTP', str(response.data))
+        self.assertIn('Email OTP was requested but not verified yet', str(response.data))
+
 
     def test_user_registration_with_dob_alias(self):
         OTPVerification.objects.create(email='new_patient_dob@test.com', otp_code='123456', is_verified=True)
