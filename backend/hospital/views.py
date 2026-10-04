@@ -202,6 +202,21 @@ class DoctorMyProfileView(APIView):
         except DoctorProfile.DoesNotExist:
             profile = DoctorProfile.objects.create(user=request.user)
         
+        # Also update User fields if passed
+        user = request.user
+        updated_user = False
+        if 'first_name' in request.data:
+            user.first_name = request.data['first_name']
+            updated_user = True
+        if 'last_name' in request.data:
+            user.last_name = request.data['last_name']
+            updated_user = True
+        if 'email' in request.data:
+            user.email = request.data['email']
+            updated_user = True
+        if updated_user:
+            user.save()
+
         serializer = DoctorProfileSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
@@ -267,6 +282,21 @@ class PatientMyProfileView(APIView):
         except PatientProfile.DoesNotExist:
             profile = PatientProfile.objects.create(user=request.user)
         
+        # Also update User fields if passed
+        user = request.user
+        updated_user = False
+        if 'first_name' in request.data:
+            user.first_name = request.data['first_name']
+            updated_user = True
+        if 'last_name' in request.data:
+            user.last_name = request.data['last_name']
+            updated_user = True
+        if 'email' in request.data:
+            user.email = request.data['email']
+            updated_user = True
+        if updated_user:
+            user.save()
+
         serializer = PatientProfileSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
