@@ -1,104 +1,15 @@
-# Hospital Management System Backend (Single-App Django Architecture)
+# 🏥 Hospital Management System - Backend Documentation
 
-A minimal, clean, and beginner-friendly Django & Django REST Framework (DRF) backend implementing a complete Hospital & Clinic Management System inside a single application `hospital`.
-
----
-
-## 📁 Project Structure
-
-```
-hospital_management/
-├── manage.py
-├── requirements.txt
-├── .env.example
-├── .env
-├── seed_demo_data.py
-├── README.md
-├── config/
-│   ├── __init__.py
-│   ├── settings.py
-│   ├── urls.py
-│   ├── asgi.py
-│   └── wsgi.py
-│
-└── hospital/
-    ├── migrations/
-    │   └── 0001_initial.py
-    ├── __init__.py
-    ├── admin.py
-    ├── apps.py
-    ├── models.py
-    ├── serializers.py
-    ├── views.py
-    ├── urls.py
-    ├── permissions.py
-    └── tests.py
-```
+A clean, production-ready Django REST Framework (DRF) backend for the MediSetu Hospital Management System. It handles Authentication, Free Email OTP, Patient & Doctor Profiles, Smart Appointment Booking, Billing, Medical Records, Prescriptions, ML Disease Prediction, and Role-based Dashboards.
 
 ---
 
-## 🛠 Tech Stack
+## 🌐 Live URLs & Admin Credentials
 
-- **Framework**: Django 5.x & Django REST Framework (DRF)
-- **Authentication**: SimpleJWT (`djangorestframework-simplejwt`)
-- **Database**: PostgreSQL (if `DATABASE_URL` is set in `.env`), otherwise SQLite.
-- **Environment Management**: `python-dotenv` & `dj-database-url`
-- **CORS**: `django-cors-headers`
+- **Live Base URL**: `https://hospital-management-system-ccc.onrender.com`
+- **Django Admin Portal**: `https://hospital-management-system-ccc.onrender.com/admin/`
 
----
-
-## ⚙️ Setup & Installation
-
-### 1. Clone & Activate Virtual Environment
-
-```bash
-cd hospital_management
-python -m venv .venv
-
-# Activate:
-# Windows:
-..\.venv\Scripts\activate
-# Linux/macOS:
-source ../.venv/bin/activate
-```
-
-### 2. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Run Database Migrations
-
-```bash
-python manage.py makemigrations hospital
-python manage.py migrate
-```
-
-### 4. Seed Demo Data (Optional)
-
-Populate default demo users (Admin, Doctor, Patient) and sample appointment/record data:
-
-```bash
-python seed_demo_data.py
-```
-
-### 5. Run Unit Tests
-
-```bash
-python manage.py test hospital
-```
-
-### 6. Start Development Server
-
-```bash
-python manage.py runserver
-```
-The server will run at: `http://127.0.0.1:8000/`
-
----
-
-## 🔑 Pre-Configured Test Credentials
+### 🔑 Pre-Configured Credentials
 
 | Role | Username | Password | Email |
 |---|---|---|---|
@@ -108,56 +19,123 @@ The server will run at: `http://127.0.0.1:8000/`
 
 ---
 
-## 📡 API Endpoints List
+## 🛠️ Tech Stack & Dependencies
 
-### 1. Authentication & Free Email OTP
-- `POST /api/auth/send-otp/` - Send 6-digit OTP to user's email (`{ "email": "user@example.com" }`)
-- `POST /api/auth/verify-otp/` - Verify OTP (`{ "email": "user@example.com", "otp": "123456" }`)
-- `POST /api/auth/register/` - Register Doctor or Patient (`role`: `DOCTOR` | `PATIENT`, optional patient field: `date_of_birth`/`dob`, optional doctor fields: `specialization`, `qualification`, `experience`, `consultation_fee`, `phone`, `available_days`)
-- `POST /api/auth/login/` - Login & receive JWT access + refresh tokens
-- `POST /api/auth/refresh/` - Refresh JWT access token
-- `GET  /api/auth/me/` - Retrieve authenticated user profile
+- **Framework**: Django 5.x & Django REST Framework (DRF)
+- **Authentication**: SimpleJWT (`JWT Access + Refresh Tokens`)
+- **Database**: SQLite (Local Dev) / PostgreSQL (Cloud via `DATABASE_URL`)
+- **Email Driver**: SMTP Gmail App Password (`django.core.mail`)
+- **CORS Headers**: Fully configured for Vercel Frontend (`CORS_ALLOW_ALL_ORIGINS = True`)
+- **WSGI / Server**: Gunicorn & WhiteNoise (Static files)
 
-### 2. Doctor Management
-- `GET  /api/doctors/` - List all doctors
-- `GET  /api/doctors/my-profile/` - View current doctor's profile
-- `POST /api/doctors/profile/` - Create doctor profile
-- `PUT  /api/doctors/profile/` - Update current doctor's profile
-- `GET  /api/doctors/<int:pk>/` - View specific doctor profile
+---
 
-### 3. Patient Management
-- `GET  /api/patients/` - List all patients (Doctors & Admins)
-- `GET  /api/patients/my-profile/` - View current patient's profile
-- `POST /api/patients/profile/` - Create patient profile
-- `PUT  /api/patients/profile/` - Update current patient's profile
-- `GET  /api/patients/<int:pk>/` - View specific patient profile
+## 📡 Complete API Reference
 
-### 4. Appointments
-- `GET  /api/appointments/` - List appointments. Filters: `?status=BOOKED`, `?upcoming=true`
-- `POST /api/appointments/` - Book an appointment (Auto-generates Bill)
-- `GET  /api/appointments/<int:pk>/` - View appointment details
-- `PUT  /api/appointments/<int:pk>/` - Update appointment status (`BOOKED`, `COMPLETED`, `CANCELLED`)
-- `DELETE /api/appointments/<int:pk>/` - Cancel/Delete appointment
+### 1. 🔐 Authentication & OTP
 
-### 5. Medical Records
-- `GET  /api/medical-records/` - List medical records
-- `POST /api/medical-records/` - Create medical record (Doctors & Admins)
-- `GET  /api/medical-records/<int:pk>/` - View medical record details
-- `PUT  /api/medical-records/<int:pk>/` - Update medical record (Doctors & Admins)
+| Endpoint | Method | Public / Auth | Description & Required Body |
+|---|---|---|---|
+| `/api/auth/send-otp/` | `POST` | Public | Send 6-digit OTP: `{"email": "user@gmail.com"}` |
+| `/api/auth/verify-otp/` | `POST` | Public | Verify OTP: `{"email": "user@gmail.com", "otp": "123456"}` |
+| `/api/auth/register/` | `POST` | Public | Register User: `{"username", "email", "password", "role": "PATIENT"}` |
+| `/api/auth/login/` | `POST` | Public | Login: `{"username", "password"}` -> Returns JWT Tokens & User Object |
+| `/api/auth/refresh/` | `POST` | Public | Refresh Access Token: `{"refresh": "<refresh_token>"}` |
+| `/api/auth/me/` | `GET` | Bearer Auth | Get Logged-in User Info |
 
-### 6. Prescriptions
-- `GET  /api/prescriptions/` - List prescriptions
-- `POST /api/prescriptions/` - Create prescription (Doctors & Admins)
-- `GET  /api/prescriptions/<int:pk>/` - View prescription details
-- `PUT  /api/prescriptions/<int:pk>/` - Update prescription (Doctors & Admins)
+---
 
-### 7. Billing
-- `GET  /api/bills/` - List bills
-- `POST /api/bills/` - Create bill manually (Uses doctor consultation fee)
-- `GET  /api/bills/<int:pk>/` - View bill details
-- `PUT  /api/bills/<int:pk>/` - Update bill status (`PENDING` | `PAID`)
+### 2. 👨‍⚕️ Doctors APIs
 
-### 8. Dashboards
-- `GET /api/dashboard/doctor/` - Doctor metrics (total/upcoming/completed appointments, patient count, recent list)
-- `GET /api/dashboard/patient/` - Patient metrics (upcoming appointments, appointment history count, recent prescriptions, pending/total bills)
-- `GET /api/dashboard/admin/` - Platform-wide statistics (doctors, patients, appointments, billing totals)
+| Endpoint | Method | Public / Auth | Description |
+|---|---|---|---|
+| `/api/doctors/` | `GET` | Public | List all doctors, specializations, fees & schedules |
+| `/api/doctors/<id>/` | `GET` | Public | View single doctor profile details |
+| `/api/doctors/profile/` | `GET`/`PUT` | Doctor Auth | View or Update logged-in doctor's specialization, fee, shift schedule |
+
+---
+
+### 3. 👤 Patients APIs
+
+| Endpoint | Method | Public / Auth | Description |
+|---|---|---|---|
+| `/api/patients/profile/` | `GET`/`PUT` | Patient Auth | View or Update patient profile (`first_name`, `last_name`, `email`, `phone`, `date_of_birth`, `gender`, `blood_group`, `address`, `allergies`, `emergency_contact`) |
+| `/api/patients/<id>/` | `GET` | Admin/Doctor | View specific patient details |
+| `/api/patients/` | `GET` | Admin/Doctor | List all registered patients |
+
+---
+
+### 4. 📅 Smart Appointment Booking
+
+| Endpoint | Method | Public / Auth | Description |
+|---|---|---|---|
+| `/api/appointments/` | `POST` | Bearer Auth | Book Appointment: `{"doctor_id": 1, "appointment_date": "2026-10-15", "appointment_time": "10:30:00", "reason": "Fever"}` |
+| `/api/appointments/` | `GET` | Bearer Auth | List Appointments. Filters: `?upcoming=true`, `?status=BOOKED` |
+| `/api/appointments/<id>/` | `GET`/`PUT`/`DELETE` | Bearer Auth | Detail, Update Status (`BOOKED`, `COMPLETED`, `CANCELLED`), or Delete |
+
+---
+
+### 5. 🤖 ML Disease Prediction & Reports
+
+| Endpoint | Method | Public / Auth | Description |
+|---|---|---|---|
+| `/api/predict-disease/` | `POST` | Bearer Auth | Predict Disease: `{"symptoms": "Fever, chest pain", "report_file": <PDF/Image>}` |
+| `/api/medical-records/` | `GET`/`POST` | Bearer Auth | List or Create Medical Record with Diagnosis & uploaded PDF/Image report |
+
+---
+
+### 6. 💊 Prescriptions & Billing
+
+| Endpoint | Method | Public / Auth | Description |
+|---|---|---|---|
+| `/api/prescriptions/` | `GET`/`POST` | Bearer Auth | List or Create Prescriptions (`medicine_name`, `dosage`, `duration`) |
+| `/api/bills/` | `GET`/`POST` | Bearer Auth | List or Create Bills |
+| `/api/bills/<id>/` | `PUT` | Bearer Auth | Update Bill status (`status`: `"PAID"`) |
+
+---
+
+### 7. 📊 Dashboards
+
+| Endpoint | Method | Auth Required | Returns |
+|---|---|---|---|
+| `/api/dashboard/patient/` | `GET` | Patient Auth | Upcoming appointments count, history count, recent prescriptions, pending bills |
+| `/api/dashboard/doctor/` | `GET` | Doctor Auth | Today's appointments count, total patients, recent bookings |
+| `/api/dashboard/admin/` | `GET` | Admin Auth | Platform-wide totals (Doctors, Patients, Appointments, Revenue) |
+
+---
+
+## ⚙️ Local Development Setup
+
+```bash
+# 1. Navigate to backend directory
+cd backend
+
+# 2. Create and activate virtual environment
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Run migrations
+python manage.py migrate
+
+# 5. Run local development server
+python manage.py runserver
+```
+
+Server runs locally at: `http://127.0.0.1:8000/`
+
+---
+
+## 🔒 Security & Authorization Header
+
+All authenticated endpoints require the JWT Access token passed in request headers:
+
+```http
+Authorization: Bearer <YOUR_JWT_ACCESS_TOKEN>
+Content-Type: application/json
+```
