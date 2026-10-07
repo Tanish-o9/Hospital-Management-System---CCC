@@ -15,10 +15,19 @@ User = get_user_model()
 class SendOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
+    def validate_email(self, value):
+        return value.lower().strip()
+
 
 class VerifyOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
     otp = serializers.CharField(max_length=6, min_length=6)
+
+    def validate_email(self, value):
+        return value.lower().strip()
+
+    def validate_otp(self, value):
+        return value.strip()
 
 
 class UserSerializer(serializers.ModelSerializer):

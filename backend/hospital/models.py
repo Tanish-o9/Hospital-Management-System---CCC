@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 # 0. OTP Verification Model
@@ -8,10 +9,9 @@ class OTPVerification(models.Model):
     email = models.EmailField()
     otp_code = models.CharField(max_length=6)
     is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     def is_expired(self):
-        from django.utils import timezone
         from datetime import timedelta
         return timezone.now() > self.created_at + timedelta(minutes=10)
 

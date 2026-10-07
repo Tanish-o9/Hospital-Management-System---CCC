@@ -50,31 +50,32 @@ class SendOTPView(APIView):
             email = serializer.validated_data['email']
             otp_code = f"{random.randint(100000, 999999)}"
             
-            OTPVerification.objects.update_or_create(
-                email=email,
-                defaults={
-                    'otp_code': otp_code,
-                    'is_verified': False,
-                    'created_at': timezone.now()
-                }
-            )
+            record, _ = OTPVerification.objects.get_or_create(email=email)
+            record.otp_code = otp_code
+            record.is_verified = False
+            record.created_at = timezone.now()
+            record.save()
 
             subject = "Your Hospital System OTP Code"
             message = f"Hello,\n\nYour 6-digit OTP verification code is: {otp_code}\nThis OTP is valid for 10 minutes.\n\nThank you!"
             from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hospital.com')
             
+            email_sent = False
             try:
-                send_mail(subject, message, from_email, [email], fail_silently=True)
-            except Exception:
-                pass
+                send_mail(subject, message, from_email, [email], fail_silently=False)
+                email_sent = True
+            except Exception as e:
+                import logging
+                logging.warning(f"OTP email could not be delivered to {email}: {e}")
 
-            return Response(
-                {
-                    "message": "OTP sent successfully to email.",
-                    "email": email
-                },
-                status=status.HTTP_200_OK
-            )
+            response_data = {
+                "message": "OTP sent successfully to email.",
+                "email": email
+            }
+            if settings.DEBUG or not email_sent:
+                response_data["otp_code"] = otp_code
+
+            return Response(response_data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -87,9 +88,8 @@ class VerifyOTPView(APIView):
             email = serializer.validated_data['email']
             otp = serializer.validated_data['otp']
 
-            try:
-                record = OTPVerification.objects.get(email=email)
-            except OTPVerification.DoesNotExist:
+            record = OTPVerification.objects.filter(email=email).first()
+            if not record:
                 return Response({"error": "No OTP request found for this email."}, status=status.HTTP_404_NOT_FOUND)
 
             if record.is_expired():

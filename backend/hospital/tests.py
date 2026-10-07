@@ -63,6 +63,35 @@ class HospitalManagementTests(APITestCase):
         patient_profile = PatientProfile.objects.get(user__username='new_patient')
         self.assertEqual(str(patient_profile.date_of_birth), '1998-08-20')
 
+    def test_send_and_verify_otp(self):
+        send_url = reverse('auth-send-otp')
+        response = self.client.post(send_url, {'email': 'test_otp@example.com'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        otp_code = OTPVerification.objects.get(email='test_otp@example.com').otp_code
+
+        verify_url = reverse('auth-verify-otp')
+        response = self.client.post(verify_url, {'email': 'TEST_OTP@EXAMPLE.COM', 'otp': otp_code})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data.get('is_verified'))
+
+    def test_otp_resend_updates_expiration_timestamp(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        # Create an old expired OTP
+        old_time = timezone.now() - timedelta(minutes=30)
+        OTPVerification.objects.create(email='resend@example.com', otp_code='111111', created_at=old_time)
+
+        # Re-send OTP
+        send_url = reverse('auth-send-otp')
+        response = self.client.post(send_url, {'email': 'resend@example.com'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_otp = OTPVerification.objects.get(email='resend@example.com').otp_code
+
+        # Verify new OTP succeeds (timestamp was updated)
+        verify_url = reverse('auth-verify-otp')
+        response = self.client.post(verify_url, {'email': 'resend@example.com', 'otp': new_otp})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_registration_fails_without_otp(self):
         OTPVerification.objects.create(email='unverified@test.com', otp_code='123456', is_verified=False)
         url = reverse('auth-register')
