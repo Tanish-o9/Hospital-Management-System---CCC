@@ -187,8 +187,27 @@ class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        serializer = UserSerializer(request.user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        user = request.user
+        data = UserSerializer(user).data
+        if hasattr(user, 'doctor_profile') and user.doctor_profile:
+            doc_data = DoctorProfileSerializer(user.doctor_profile).data
+            data['doctor_profile'] = doc_data
+            data['phone'] = doc_data.get('phone', '')
+            data['specialization'] = doc_data.get('specialization', '')
+            data['qualification'] = doc_data.get('qualification', '')
+            data['experience'] = doc_data.get('experience', 0)
+            data['consultation_fee'] = doc_data.get('consultation_fee', '500.00')
+            data['available_days'] = doc_data.get('available_days', '')
+        elif hasattr(user, 'patient_profile') and user.patient_profile:
+            pat_data = PatientProfileSerializer(user.patient_profile).data
+            data['patient_profile'] = pat_data
+            data['phone'] = pat_data.get('phone', '')
+            data['gender'] = pat_data.get('gender', '')
+            data['date_of_birth'] = pat_data.get('date_of_birth', '')
+            data['blood_group'] = pat_data.get('blood_group', '')
+            data['address'] = pat_data.get('address', '')
+            data['emergency_contact'] = pat_data.get('emergency_contact', '')
+        return Response(data, status=status.HTTP_200_OK)
 
 
 # ==================================================
