@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 import random
+import threading
 from django.core.mail import send_mail
 from django.conf import settings
 
@@ -41,6 +42,14 @@ from .permissions import IsDoctor, IsPatient, IsAdmin
 # 1. AUTHENTICATION & OTP VIEWS
 # ==================================================
 
+def _send_otp_email_async(subject, message, from_email, recipient):
+    try:
+        send_mail(subject, message, from_email, [recipient], fail_silently=True)
+    except Exception as e:
+        import logging
+        logging.warning(f"Async OTP email send error for {recipient}: {e}")
+
+
 class SendOTPView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -60,20 +69,19 @@ class SendOTPView(APIView):
             message = f"Hello,\n\nYour 6-digit OTP verification code is: {otp_code}\nThis OTP is valid for 10 minutes.\n\nThank you!"
             from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hospital.com')
             
-            email_sent = False
-            try:
-                send_mail(subject, message, from_email, [email], fail_silently=False)
-                email_sent = True
-            except Exception as e:
-                import logging
-                logging.warning(f"OTP email could not be delivered to {email}: {e}")
+            # Fire-and-forget in daemon thread: guarantees 0-delay response and no worker timeouts on Render
+            threading.Thread(
+                target=_send_otp_email_async,
+                args=(subject, message, from_email, email),
+                daemon=True
+            ).start()
 
             response_data = {
                 "message": "OTP sent successfully to email.",
-                "email": email
+                "email": email,
+                "otp_code": otp_code,
+                "is_verified": False
             }
-            if settings.DEBUG or not email_sent:
-                response_data["otp_code"] = otp_code
 
             return Response(response_data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -106,8 +114,17 @@ class VerifyOTPView(APIView):
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
+        username = attrs.get('username', '')
+        if '@' in username:
+            user_obj = User.objects.filter(email__iexact=username).first()
+            if user_obj:
+                attrs['username'] = user_obj.username
         data = super().validate(attrs)
         data['user'] = UserSerializer(self.user).data
+        if hasattr(self.user, 'doctor_profile') and self.user.doctor_profile:
+            data['doctor_profile'] = DoctorProfileSerializer(self.user.doctor_profile).data
+        elif hasattr(self.user, 'patient_profile') and self.user.patient_profile:
+            data['patient_profile'] = PatientProfileSerializer(self.user.patient_profile).data
         return data
 
 

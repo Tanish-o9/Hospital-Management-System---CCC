@@ -41,25 +41,35 @@ class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     otp = serializers.CharField(required=False, allow_blank=True, write_only=True)
     # Patient fields
-    date_of_birth = serializers.DateField(required=False, allow_null=True, write_only=True)
-    dob = serializers.DateField(required=False, allow_null=True, write_only=True)
+    date_of_birth = serializers.DateField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+        input_formats=['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']
+    )
+    dob = serializers.DateField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+        input_formats=['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%d-%m-%Y', '%Y/%m/%d']
+    )
+    gender = serializers.CharField(required=False, allow_blank=True, write_only=True)
     # Doctor fields
     specialization = serializers.CharField(required=False, allow_blank=True, write_only=True)
     phone = serializers.CharField(required=False, allow_blank=True, write_only=True)
     qualification = serializers.CharField(required=False, allow_blank=True, write_only=True)
-    experience = serializers.IntegerField(required=False, write_only=True)
-    consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, write_only=True)
+    experience = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2, required=False, allow_null=True, write_only=True)
     available_days = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = User
         fields = (
             'id', 'username', 'email', 'password', 'otp', 'first_name', 'last_name', 'role',
-            'date_of_birth', 'dob',
+            'date_of_birth', 'dob', 'gender',
             'specialization', 'phone', 'qualification', 'experience', 'consultation_fee', 'available_days'
         )
         read_only_fields = ('id',)
-
 
     def validate_role(self, value):
         if value not in [User.Role.DOCTOR, User.Role.PATIENT, User.Role.ADMIN]:
@@ -74,6 +84,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         date_of_birth = validated_data.pop('date_of_birth', None)
+        gender = validated_data.pop('gender', '')
         specialization = validated_data.pop('specialization', None)
         phone = validated_data.pop('phone', None)
         qualification = validated_data.pop('qualification', None)
@@ -81,8 +92,14 @@ class RegisterSerializer(serializers.ModelSerializer):
         consultation_fee = validated_data.pop('consultation_fee', None)
         available_days = validated_data.pop('available_days', None)
 
+        base_username = validated_data['username']
+        username = base_username
+        import random
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}_{random.randint(100, 9999)}"
+
         user = User.objects.create_user(
-            username=validated_data['username'],
+            username=username,
             email=validated_data['email'],
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
@@ -91,23 +108,31 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
 
         if user.role == User.Role.PATIENT:
+            patient_defaults = {}
+            if date_of_birth:
+                patient_defaults['date_of_birth'] = date_of_birth
+            if phone:
+                patient_defaults['phone'] = phone
+            if gender:
+                patient_defaults['gender'] = gender
+
             PatientProfile.objects.get_or_create(
                 user=user,
-                defaults={'date_of_birth': date_of_birth} if date_of_birth else {}
+                defaults=patient_defaults
             )
         elif user.role == User.Role.DOCTOR:
             doc_defaults = {}
-            if specialization is not None:
+            if specialization:
                 doc_defaults['specialization'] = specialization
-            if phone is not None:
+            if phone:
                 doc_defaults['phone'] = phone
-            if qualification is not None:
+            if qualification:
                 doc_defaults['qualification'] = qualification
             if experience is not None:
                 doc_defaults['experience'] = experience
             if consultation_fee is not None:
                 doc_defaults['consultation_fee'] = consultation_fee
-            if available_days is not None:
+            if available_days:
                 doc_defaults['available_days'] = available_days
 
             DoctorProfile.objects.get_or_create(
